@@ -1,0 +1,310 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TripStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ExpeditionStatus {
+  AVAILABLE
+  FULL
+  CANCELLED
+  COMPLETED
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  REFUNDED
+}
+
+enum BookingItemType {
+  ADULT
+  CHILD
+  EXTRA
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+enum AgencyApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Tabla de Better Auth - User (para autenticación)
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false) @map("email_verified")
+  image         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Campos adicionales personalizados
+  dniUser       String?  @map("dni_user") @db.VarChar(255)
+  phoneUser     String?  @map("phone_user") @db.VarChar(50)
+  pictureUser   String?  @map("picture_user") @db.VarChar(500)
+  idCity        BigInt?  @map("id_city") @db.BigInt
+
+  // Relaciones
+  sessions      Session[]
+  accounts      Account[]
+  city          City?    @relation(fields: [idCity], references: [idCity], onDelete: SetNull)
+  agencyMembers AgencyMember[]
+  bookings      Booking[] @relation("OwnerBuy")
+  discountCodeUsage DiscountCodeUsage[]
+
+  @@map("user")
+}
+
+// Tabla de Better Auth - Session
+model Session {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+// Tabla de Better Auth - Account
+model Account {
+  id                    String    @id @default(cuid())
+  userId                String    @map("user_id")
+  accountId             String    @map("account_id")
+  providerId            String    @map("provider_id")
+  accessToken           String?   @map("access_token")
+  refreshToken          String?   @map("refresh_token")
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at")
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
+  scope                 String?
+  idToken               String?   @map("id_token")
+  password              String?   // Para email/password authentication
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("account")
+}
+
+// Tabla de Better Auth - Verification
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("verification")
+}
+
+// Ciudades
+model City {
+  idCity    BigInt @id @default(autoincrement()) @map("id_city") @db.BigInt
+  nameCity  String @map("name_city") @db.VarChar(255)
+
+  users User[]
+  trips Trip[]
+
+  @@map("cities")
+}
+
+// Agencias
+model Agency {
+  idAgency   BigInt              @id @default(autoincrement()) @map("id_agency") @db.BigInt
+  nameAgency String              @map("name_agency") @db.VarChar(255)
+  email      String?             @db.VarChar(255)
+  phone      String?             @db.VarChar(50)
+  agencyId   String?             @unique @map("agency_id") @db.VarChar(255)
+  nit        String?             @unique @db.VarChar(50) // Número de Identificación Tributaria
+  rntNumber  String?             @unique @map("rnt_number") @db.VarChar(50) // Registro Nacional de Turismo
+  picture    String?             @db.VarChar(500)
+  status     String              @default("active") @db.VarChar(20)
+  approvalStatus AgencyApprovalStatus @default(PENDING) @map("approval_status") // Estado de aprobación por superadmin
+  rejectionReason String?        @map("rejection_reason") @db.Text // Razón de rechazo si es rechazada
+  reviewedBy      String?        @map("reviewed_by") @db.VarChar(255) // ID del superadmin que revisó
+  reviewedAt      DateTime?      @map("reviewed_at") @db.Timestamp // Fecha de revisión
+  createdAt  DateTime            @default(now()) @map("created_at") @db.Timestamp
+  updatedAt  DateTime            @updatedAt @map("updated_at") @db.Timestamp
+
+  agencyMembers AgencyMember[]
+  trips         Trip[]
+  bookings      Booking[]
+  discountCodes DiscountCode[]
+
+  @@map("agencies")
+}
+
+// Miembros de agencias (relación muchos a muchos con roles)
+model AgencyMember {
+  id       BigInt @id @default(autoincrement()) @db.BigInt
+  idAgency BigInt @map("id_agency") @db.BigInt
+  idUser   String @map("user_id") // Cambiado a String para Better Auth
+  role     String @db.VarChar(20) // 'admin', 'editor', 'agent', etc.
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamp
+
+  agency Agency @relation(fields: [idAgency], references: [idAgency], onDelete: Cascade)
+  user   User   @relation(fields: [idUser], references: [id], onDelete: Cascade)
+
+  @@unique([idAgency, idUser])
+  @@map("agency_members")
+}
+
+// Viajes
+model Trip {
+  idTrip        BigInt     @id @default(autoincrement()) @map("id_trip") @db.BigInt
+  idAgency      BigInt     @map("id_agency") @db.BigInt
+  idCity        BigInt     @map("id_city") @db.BigInt
+  title         String     @db.VarChar(255)
+  description   String?    @db.Text
+  category      String     @db.VarChar(60)
+  vibe          String?    @db.VarChar(60)
+  durationDays  Int        @map("duration_days")
+  durationNights Int       @map("duration_nights")
+  coverImage    String?    @map("cover_image") @db.VarChar(800)
+  status        TripStatus @default(DRAFT)
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamp
+  updatedAt     DateTime   @updatedAt @map("updated_at") @db.Timestamp
+
+  agency        Agency      @relation(fields: [idAgency], references: [idAgency], onDelete: Cascade)
+  city          City        @relation(fields: [idCity], references: [idCity], onDelete: Restrict)
+  expeditions   Expedition[]
+  bookings      Booking[]
+  discountCodes DiscountCode[]
+
+  @@map("trips")
+}
+
+// Expediciones (instancias de viajes con fechas)
+model Expedition {
+  idExpedition      BigInt           @id @default(autoincrement()) @map("id_expedition") @db.BigInt
+  idTrip            BigInt           @map("id_trip") @db.BigInt
+  startDate         DateTime         @map("start_date") @db.Date
+  endDate           DateTime         @map("end_date") @db.Date
+  capacityTotal     Int              @map("capacity_total")
+  capacityAvailable Int              @map("capacity_available")
+  priceAdult        Decimal          @map("price_adult") @db.Decimal(12, 2)
+  priceChild        Decimal?         @map("price_child") @db.Decimal(12, 2)
+  currency          String           @default("USD") @db.VarChar(10)
+  status            ExpeditionStatus @default(AVAILABLE)
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamp
+  updatedAt         DateTime         @updatedAt @map("updated_at") @db.Timestamp
+
+  trip            Trip            @relation(fields: [idTrip], references: [idTrip], onDelete: Cascade)
+  bookings        Booking[]
+  discountCodes   DiscountCode[]
+
+  @@map("expeditions")
+}
+
+// Reservas
+model Booking {
+  idBooking       BigInt        @id @default(autoincrement()) @map("id_booking") @db.BigInt
+  idExpedition    BigInt        @map("id_expedition") @db.BigInt
+  idTrip          BigInt        @map("id_trip") @db.BigInt
+  idAgency        BigInt        @map("id_agency") @db.BigInt
+  ownerBuy        String        @map("owner_buy") // Cambiado a String para Better Auth
+  dateBuy         DateTime      @default(now()) @map("date_buy") @db.Timestamp
+  referenceBuy    String?       @map("reference_buy") @db.VarChar(255)
+  status          BookingStatus @default(PENDING)
+  subtotal        Decimal       @map("subtotal") @db.Decimal(12, 2)
+  serviceFee      Decimal       @default(0) @map("service_fee") @db.Decimal(12, 2)
+  discountCode    String?       @map("discount_code") @db.VarChar(60)
+  discountAmount  Decimal       @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  totalBuy        Decimal       @map("total_buy") @db.Decimal(12, 2)
+  currency        String        @default("USD") @db.VarChar(10)
+  transactionId   String?       @map("transaction_id") @db.VarChar(255)
+  paymentSource   String?       @map("payment_source") @db.VarChar(60)
+  ticketsPdfKey   String?       @map("tickets_pdf_key") @db.VarChar(500)
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamp
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamp
+
+  expedition      Expedition        @relation(fields: [idExpedition], references: [idExpedition], onDelete: Restrict)
+  trip            Trip              @relation(fields: [idTrip], references: [idTrip], onDelete: Restrict)
+  agency          Agency            @relation(fields: [idAgency], references: [idAgency], onDelete: Restrict)
+  owner           User              @relation("OwnerBuy", fields: [ownerBuy], references: [id], onDelete: Restrict)
+  bookingItems    BookingItem[]
+  discountCodeUsage DiscountCodeUsage[]
+
+  @@map("bookings")
+}
+
+// Ítems de reserva
+model BookingItem {
+  id          BigInt        @id @default(autoincrement()) @db.BigInt
+  idBooking   BigInt        @map("id_booking") @db.BigInt
+  itemType    BookingItemType @map("item_type")
+  description String?       @db.VarChar(255)
+  quantity    Int
+  unitPrice   Decimal       @map("unit_price") @db.Decimal(12, 2)
+  totalPrice  Decimal       @map("total_price") @db.Decimal(12, 2)
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamp
+
+  booking Booking @relation(fields: [idBooking], references: [idBooking], onDelete: Cascade)
+
+  @@map("booking_items")
+}
+
+// Códigos de descuento
+model DiscountCode {
+  id            BigInt       @id @default(autoincrement()) @db.BigInt
+  codeName      String       @unique @map("code_name") @db.VarChar(60)
+  discountType  DiscountType @map("discount_type")
+  value         Decimal      @db.Decimal(12, 2)
+  maxUses       Int?         @map("max_uses")
+  perUserLimit  Int?         @map("per_user_limit")
+  usedCount     Int          @default(0) @map("used_count")
+  active        Boolean      @default(true)
+  idAgency      BigInt?      @map("id_agency") @db.BigInt
+  idTrip        BigInt?      @map("id_trip") @db.BigInt
+  idExpedition  BigInt?      @map("id_expedition") @db.BigInt
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamp
+  updatedAt     DateTime     @updatedAt @map("updated_at") @db.Timestamp
+
+  agency           Agency?            @relation(fields: [idAgency], references: [idAgency], onDelete: Cascade)
+  trip             Trip?              @relation(fields: [idTrip], references: [idTrip], onDelete: Cascade)
+  expedition       Expedition?        @relation(fields: [idExpedition], references: [idExpedition], onDelete: Cascade)
+  discountCodeUsage DiscountCodeUsage[]
+
+  @@map("discount_codes")
+}
+
+// Uso de códigos de descuento
+model DiscountCodeUsage {
+  id              BigInt   @id @default(autoincrement()) @db.BigInt
+  discountCodeId  BigInt   @map("discount_code_id") @db.BigInt
+  userId          String   @map("user_id") // Cambiado a String para Better Auth
+  bookingId       BigInt   @map("booking_id") @db.BigInt
+  usedAt          DateTime @default(now()) @map("used_at") @db.Timestamp
+
+  discountCode DiscountCode @relation(fields: [discountCodeId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  booking      Booking      @relation(fields: [bookingId], references: [idBooking], onDelete: Cascade)
+
+  @@map("discount_code_usage")
+}

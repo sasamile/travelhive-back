@@ -1,0 +1,577 @@
+{
+	"info": {
+		"_postman_id": "travelapp-backend-collection",
+		"name": "Travel App Backend",
+		"description": "Colección de endpoints para Travel App Backend - NestJS + Better Auth + Prisma",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "🔐 Autenticación (Better Auth)",
+			"item": [
+				{
+					"name": "Registrar Usuario",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"usuario@example.com\",\n  \"password\": \"password123\",\n  \"name\": \"Juan Pérez\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/sign-up/email",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"sign-up",
+								"email"
+							]
+						},
+						"description": "Registra un nuevo usuario con email y contraseña"
+					},
+					"response": []
+				},
+				{
+					"name": "Iniciar Sesión",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"// Las cookies se guardan automáticamente en Postman",
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"usuario@example.com\",\n  \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/sign-in/email",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"sign-in",
+								"email"
+							]
+						},
+						"description": "Inicia sesión con email y contraseña. Las cookies de sesión se guardan automáticamente."
+					},
+					"response": []
+				},
+				{
+					"name": "Obtener Sesión Actual",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/get-session",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"get-session"
+							]
+						},
+						"description": "Obtiene la sesión actual del usuario autenticado"
+					},
+					"response": []
+				},
+				{
+					"name": "Cerrar Sesión",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/sign-out",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"sign-out"
+							]
+						},
+						"description": "Cierra la sesión del usuario actual"
+					},
+					"response": []
+				},
+				{
+					"name": "Verificar Email",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"verification-token\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/verify-email",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"verify-email"
+							]
+						},
+						"description": "Verifica el email del usuario con un token"
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints de autenticación proporcionados por Better Auth"
+		},
+		{
+			"name": "👤 Autenticación Personalizada",
+			"item": [
+				{
+					"name": "Obtener Perfil",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/me",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"me"
+							]
+						},
+						"description": "Obtiene el perfil del usuario autenticado. Requiere cookie de sesión."
+					},
+					"response": []
+				},
+				{
+					"name": "Obtener Sesión Completa",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/session",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"session"
+							]
+						},
+						"description": "Obtiene la sesión completa del usuario. Requiere cookie de sesión."
+					},
+					"response": []
+				},
+				{
+					"name": "Ruta Pública",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/public",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"public"
+							]
+						},
+						"description": "Ruta pública que no requiere autenticación. Útil para verificar que el servidor está funcionando. También funciona como health check endpoint."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints personalizados de autenticación"
+		},
+		{
+			"name": "🏢 Agencias",
+			"item": [
+				{
+					"name": "Registrar Usuario-Agencia",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"emailUser\": \"agencia@example.com\",\n  \"nameUser\": \"Juan Pérez\",\n  \"password\": \"password123\",\n  \"dniUser\": \"12345678\",\n  \"phoneUser\": \"+57 300 123 4567\",\n  \"nameAgency\": \"Agencia de Viajes XYZ\",\n  \"email\": \"contacto@agenciaxyz.com\",\n  \"phone\": \"+57 1 234 5678\",\n  \"nit\": \"900123456-7\",\n  \"rntNumber\": \"RNT-12345\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/agencies/register",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"agencies",
+								"register"
+							]
+						},
+						"description": "Crea un nuevo usuario (persona natural) que presta experiencias y su agencia asociada. La agencia queda en estado PENDING hasta aprobación."
+					},
+					"response": []
+				},
+				{
+					"name": "Crear Trip (Experiencia)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"idAgency\": 1,\n  \"idCity\": 1,\n  \"title\": \"Tour por la Ciudad Perdida\",\n  \"description\": \"Una experiencia única por las ruinas arqueológicas\",\n  \"category\": \"Aventura\",\n  \"vibe\": \"Ecoturismo\",\n  \"durationDays\": 4,\n  \"durationNights\": 3,\n  \"coverImage\": \"https://example.com/cover.jpg\",\n  \"status\": \"DRAFT\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/agencies/:agencyId/trips",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"agencies",
+								":agencyId",
+								"trips"
+							],
+							"variable": [
+								{
+									"key": "agencyId",
+									"value": "1",
+									"description": "ID de la agencia"
+								}
+							]
+						},
+						"description": "Crea un nuevo trip (experiencia) para la agencia. Requiere autenticación y rol admin o editor."
+					},
+					"response": []
+				},
+				{
+					"name": "Listar Trips de Agencia",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/agencies/:agencyId/trips",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"agencies",
+								":agencyId",
+								"trips"
+							],
+							"variable": [
+								{
+									"key": "agencyId",
+									"value": "1",
+									"description": "ID de la agencia"
+								}
+							]
+						},
+						"description": "Lista todos los trips de una agencia. Requiere autenticación y pertenecer a la agencia."
+					},
+					"response": []
+				},
+				{
+					"name": "Actualizar Trip",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Tour por la Ciudad Perdida - Actualizado\",\n  \"description\": \"Nueva descripción\",\n  \"status\": \"PUBLISHED\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/agencies/:agencyId/trips/:tripId",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"agencies",
+								":agencyId",
+								"trips",
+								":tripId"
+							],
+							"variable": [
+								{
+									"key": "agencyId",
+									"value": "1",
+									"description": "ID de la agencia"
+								},
+								{
+									"key": "tripId",
+									"value": "1",
+									"description": "ID del trip"
+								}
+							]
+						},
+						"description": "Actualiza un trip existente. Requiere autenticación y rol admin o editor."
+					},
+					"response": []
+				},
+				{
+					"name": "Eliminar Trip",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/agencies/:agencyId/trips/:tripId",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"agencies",
+								":agencyId",
+								"trips",
+								":tripId"
+							],
+							"variable": [
+								{
+									"key": "agencyId",
+									"value": "1",
+									"description": "ID de la agencia"
+								},
+								{
+									"key": "tripId",
+									"value": "1",
+									"description": "ID del trip"
+								}
+							]
+						},
+						"description": "Elimina un trip. Requiere autenticación y rol admin."
+					},
+					"response": []
+				},
+				{
+					"name": "Crear Expedición",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"idTrip\": 1,\n  \"startDate\": \"2026-03-15T00:00:00.000Z\",\n  \"endDate\": \"2026-03-18T00:00:00.000Z\",\n  \"capacityTotal\": 20,\n  \"capacityAvailable\": 20,\n  \"priceAdult\": 500000,\n  \"priceChild\": 300000,\n  \"currency\": \"COP\",\n  \"status\": \"AVAILABLE\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/agencies/trips/:tripId/expeditions",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"agencies",
+								"trips",
+								":tripId",
+								"expeditions"
+							],
+							"variable": [
+								{
+									"key": "tripId",
+									"value": "1",
+									"description": "ID del trip"
+								}
+							]
+						},
+						"description": "Crea una nueva expedición (instancia de trip con fechas). Requiere autenticación y rol admin o editor."
+					},
+					"response": []
+				},
+				{
+					"name": "Listar Expediciones de Trip",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/agencies/trips/:tripId/expeditions",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"agencies",
+								"trips",
+								":tripId",
+								"expeditions"
+							],
+							"variable": [
+								{
+									"key": "tripId",
+									"value": "1",
+									"description": "ID del trip"
+								}
+							]
+						},
+						"description": "Lista todas las expediciones de un trip. Requiere autenticación y pertenecer a la agencia del trip."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints para gestionar agencias, trips y expediciones"
+		},
+		{
+			"name": "👨‍💼 Administración",
+			"item": [
+				{
+					"name": "Listar Agencias Pendientes",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/admin/agencies/pending",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"admin",
+								"agencies",
+								"pending"
+							]
+						},
+						"description": "Lista todas las agencias que están pendientes de aprobación. Requiere autenticación."
+					},
+					"response": []
+				},
+				{
+					"name": "Aprobar Agencia",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/admin/agencies/:agencyId/approve",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"admin",
+								"agencies",
+								":agencyId",
+								"approve"
+							],
+							"variable": [
+								{
+									"key": "agencyId",
+									"value": "1",
+									"description": "ID de la agencia a aprobar"
+								}
+							]
+						},
+						"description": "Aprueba una agencia pendiente. Requiere autenticación."
+					},
+					"response": []
+				},
+				{
+					"name": "Rechazar Agencia",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"rejectionReason\": \"Documentación incompleta\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/admin/agencies/:agencyId/reject",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"admin",
+								"agencies",
+								":agencyId",
+								"reject"
+							],
+							"variable": [
+								{
+									"key": "agencyId",
+									"value": "1",
+									"description": "ID de la agencia a rechazar"
+								}
+							]
+						},
+						"description": "Rechaza una agencia pendiente con una razón. Requiere autenticación."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints de administración para gestionar agencias"
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3000",
+			"type": "string"
+		}
+	]
+}

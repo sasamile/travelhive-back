@@ -1,0 +1,42 @@
+{
+  "workbench.iconTheme": "material-icon-theme",
+  "material-icon-theme.activeIconPack": "nest",
+  "material-icon-theme.folders.associations": {
+    "src": "src",
+    "test": "test",
+    "dist": "dist",
+    "public": "public"
+  },
+  "material-icon-theme.files.associations": {
+    "*.module.ts": "nest-module",
+    "*.controller.ts": "nest-controller",
+    "*.service.ts": "nest-service",
+    "*.guard.ts": "nest-guard",
+    "*.interceptor.ts": "nest-interceptor",
+    "*.decorator.ts": "nest-decorator",
+    "*.filter.ts": "nest-filter",
+    "*.pipe.ts": "nest-pipe",
+    "*.resolver.ts": "nest-resolver",
+    "*.middleware.ts": "nest-middleware",
+    "nest-cli.json": "nest",
+    "*.spec.ts": "test-ts"
+  },
+  "files.associations": {
+    "*.module.ts": "typescript",
+    "*.controller.ts": "typescript",
+    "*.service.ts": "typescript",
+    "*.guard.ts": "typescript",
+    "*.interceptor.ts": "typescript",
+    "*.decorator.ts": "typescript",
+    "*.filter.ts": "typescript",
+    "*.pipe.ts": "typescript",
+    "*.resolver.ts": "typescript",
+    "nest-cli.json": "jsonc"
+  },
+  "files.exclude": {
+    "**/.git": true,
+    "**/.DS_Store": true,
+    "**/node_modules": true,
+    "**/dist": true
+  }
+}
