@@ -16,8 +16,7 @@ export class UserRepository implements IUserRepository {
         emailVerified: false,
         dniUser: user.dniUser,
         phoneUser: user.phoneUser,
-        pictureUser: user.pictureUser,
-        idCity: user.idCity ? BigInt(user.idCity.toString()) : null,
+        image: user.picture, // Better Auth usa 'image', lo mapeamos desde 'picture'
       },
     });
     return this.mapToEntity(created);
@@ -30,10 +29,10 @@ export class UserRepository implements IUserRepository {
     return user ? this.mapToEntity(user) : null;
   }
 
-  async findById(id: bigint): Promise<User | null> {
-    // Better Auth usa String para id, no bigint
+  async findById(id: string): Promise<User | null> {
+    // Better Auth usa String para id
     const user = await this.prisma.user.findUnique({
-      where: { id: id.toString() },
+      where: { id },
     });
     return user ? this.mapToEntity(user) : null;
   }
@@ -46,18 +45,15 @@ export class UserRepository implements IUserRepository {
     return user ? this.mapToEntity(user) : null;
   }
 
-  async update(id: bigint, data: Partial<User>): Promise<User> {
+  async update(id: string, data: Partial<User>): Promise<User> {
     const updated = await this.prisma.user.update({
-      where: { id: id.toString() },
+      where: { id },
       data: {
         ...(data.emailUser && { email: data.emailUser }),
         ...(data.nameUser && { name: data.nameUser }),
         ...(data.dniUser !== undefined && { dniUser: data.dniUser }),
         ...(data.phoneUser !== undefined && { phoneUser: data.phoneUser }),
-        ...(data.pictureUser !== undefined && { pictureUser: data.pictureUser }),
-        ...(data.idCity !== undefined && {
-          idCity: data.idCity ? BigInt(data.idCity.toString()) : null,
-        }),
+        ...(data.picture !== undefined && { image: data.picture }), // Better Auth usa 'image'
       },
     });
     return this.mapToEntity(updated);
@@ -65,15 +61,14 @@ export class UserRepository implements IUserRepository {
 
   private mapToEntity(prismaUser: any): User {
     return new User({
-      idUser: BigInt(prismaUser.id), // Convertir String id a BigInt para compatibilidad
+      idUser: prismaUser.id, // Better Auth usa String (CUID) para id
       dniUser: prismaUser.dniUser,
       emailUser: prismaUser.email,
       nameUser: prismaUser.name,
       phoneUser: prismaUser.phoneUser,
       userId: prismaUser.id, // En Better Auth, userId = id
-      pictureUser: prismaUser.pictureUser,
+      picture: prismaUser.image || undefined, // Better Auth usa 'image', lo mapeamos a 'picture'
       password: '', // La contraseña está en Account, no en User
-      idCity: prismaUser.idCity,
       createdAt: prismaUser.createdAt,
       updatedAt: prismaUser.updatedAt,
     });

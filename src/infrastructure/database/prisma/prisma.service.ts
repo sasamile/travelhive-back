@@ -36,6 +36,26 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
   async onModuleInit() {
     await this.$connect();
+    
+    // Verificar e inicializar tablas si no existen (solo en desarrollo)
+    if (process.env.NODE_ENV === 'development') {
+      try {
+        const result = await this.$queryRaw<Array<{ exists: boolean }>>`
+          SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = 'user'
+          ) as exists;
+        `;
+        
+        if (!result[0]?.exists) {
+          console.warn('⚠️  Las tablas no existen. Por favor ejecuta: npm run prisma:init');
+        }
+      } catch (error) {
+        // Ignorar errores de verificación
+        console.warn('⚠️  No se pudo verificar el estado de la base de datos');
+      }
+    }
   }
 
   async onModuleDestroy() {

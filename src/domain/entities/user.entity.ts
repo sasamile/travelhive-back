@@ -1,13 +1,12 @@
 export class User {
-  idUser: bigint;
+  idUser: string;
   dniUser?: string;
   emailUser: string;
   nameUser: string;
   phoneUser?: string;
   userId: string;
-  pictureUser?: string;
+  picture?: string; // Usa el campo image de Better Auth
   password: string;
-  idCity?: bigint;
   createdAt: Date;
   updatedAt: Date;
 

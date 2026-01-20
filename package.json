@@ -21,6 +21,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
+    "prisma:init": "ts-node -r tsconfig-paths/register scripts/init-database.ts",
     "better-auth:generate": "npx @better-auth/cli@latest generate",
     "better-auth:secret": "npx @better-auth/cli@latest secret"
   },

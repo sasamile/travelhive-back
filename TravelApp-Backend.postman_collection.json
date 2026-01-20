@@ -233,7 +233,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"emailUser\": \"agencia@example.com\",\n  \"nameUser\": \"Juan Pérez\",\n  \"password\": \"password123\",\n  \"dniUser\": \"12345678\",\n  \"phoneUser\": \"+57 300 123 4567\",\n  \"nameAgency\": \"Agencia de Viajes XYZ\",\n  \"email\": \"contacto@agenciaxyz.com\",\n  \"phone\": \"+57 1 234 5678\",\n  \"nit\": \"900123456-7\",\n  \"rntNumber\": \"RNT-12345\"\n}"
+							"raw": "{\n  \"emailUser\": \"agencia@example.com\",\n  \"nameUser\": \"Juan Pérez\",\n  \"password\": \"password123\",\n  \"dniUser\": \"12345678\",\n  \"phoneUser\": \"+57 300 123 4567\",\n  \"picture\": \"https://example.com/user-photo.jpg\",\n  \"nameAgency\": \"Agencia de Viajes XYZ\",\n  \"phone\": \"+57 1 234 5678\",\n  \"nit\": \"900123456-7\",\n  \"rntNumber\": \"RNT-12345\",\n  \"pictureAgency\": \"https://example.com/agency-logo.jpg\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/agencies/register",
@@ -245,7 +245,7 @@
 								"register"
 							]
 						},
-						"description": "Crea un nuevo usuario (persona natural) que presta experiencias y su agencia asociada. La agencia queda en estado PENDING hasta aprobación."
+						"description": "Crea un nuevo usuario (persona natural) que presta experiencias y su agencia asociada. La agencia queda en estado PENDING hasta aprobación.\n\nNotas:\n- El email del usuario será usado como email de la agencia automáticamente\n- `picture`: Foto de perfil del usuario (opcional)\n- `pictureAgency`: Logo/foto de la agencia (opcional)\n- No se requiere campo `email` separado para la agencia"
 					},
 					"response": []
 				},

@@ -10,7 +10,7 @@ import {
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
-import { Session } from '@thallesp/nestjs-better-auth';
+import { Session, AllowAnonymous } from '@thallesp/nestjs-better-auth';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
 import { RegisterAgencyUseCase } from '../../application/use-cases/auth/register-use-case';
 import { CreateTripUseCase } from '../../application/use-cases/trip/create-trip-use-case';
@@ -39,8 +39,10 @@ export class AgencyController {
   /**
    * Registra un nuevo usuario-agencia
    * Crea tanto el usuario como la agencia y los relaciona
+   * Este endpoint es público - no requiere autenticación
    */
   @Post('register')
+  @AllowAnonymous()
   @HttpCode(HttpStatus.CREATED)
   async registerAgency(@Body() dto: RegisterAgencyDto) {
     const result = await this.registerAgencyUseCase.execute({
@@ -49,14 +51,12 @@ export class AgencyController {
       password: dto.password,
       dniUser: dto.dniUser,
       phoneUser: dto.phoneUser,
-      pictureUser: dto.pictureUser,
-      idCity: dto.idCity ? BigInt(dto.idCity) : undefined,
+      picture: dto.picture,
       nameAgency: dto.nameAgency,
-      email: dto.email,
       phone: dto.phone,
       nit: dto.nit,
       rntNumber: dto.rntNumber,
-      picture: dto.picture,
+      pictureAgency: dto.pictureAgency,
     });
 
     return {

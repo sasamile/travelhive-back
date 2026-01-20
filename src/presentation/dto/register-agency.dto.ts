@@ -24,19 +24,11 @@ export class RegisterAgencyDto {
 
   @IsString()
   @IsOptional()
-  pictureUser?: string;
-
-  @IsString()
-  @IsOptional()
-  idCity?: string;
+  picture?: string; // Foto del usuario
 
   @IsString()
   @IsNotEmpty()
   nameAgency: string;
-
-  @IsEmail()
-  @IsOptional()
-  email?: string;
 
   @IsString()
   @IsOptional()
@@ -52,5 +44,5 @@ export class RegisterAgencyDto {
 
   @IsString()
   @IsOptional()
-  picture?: string;
+  pictureAgency?: string; // Logo/foto de la agencia
 }

@@ -24,14 +24,6 @@ export const createAuthInstance = (prisma: PrismaClient) => {
           type: 'string',
           required: false,
         },
-        pictureUser: {
-          type: 'string',
-          required: false,
-        },
-        idCity: {
-          type: 'string',
-          required: false,
-        },
         userId: {
           type: 'string',
           required: false,

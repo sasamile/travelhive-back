@@ -11,16 +11,14 @@ export interface RegisterAgencyDto {
   password: string;
   dniUser?: string;
   phoneUser?: string;
-  pictureUser?: string;
-  idCity?: bigint;
+  picture?: string; // Foto del usuario
 
   // Datos de la agencia
   nameAgency: string;
-  email?: string;
   phone?: string;
   nit: string;
   rntNumber: string;
-  picture?: string;
+  pictureAgency?: string; // Logo/foto de la agencia
 }
 
 @Injectable()
@@ -66,20 +64,20 @@ export class RegisterAgencyUseCase {
       password: hashedPassword,
       dniUser: data.dniUser,
       phoneUser: data.phoneUser,
-      pictureUser: data.pictureUser,
-      idCity: data.idCity,
+      picture: data.picture,
       userId,
     });
 
     // Crear la agencia con estado PENDING
+    // El email de la agencia es el mismo que el email del usuario
     const agencyId = `agency_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     const agency = await this.agencyRepository.create({
       nameAgency: data.nameAgency,
-      email: data.email,
+      email: data.emailUser, // Usar el email del usuario como email de la agencia
       phone: data.phone,
       nit: data.nit,
       rntNumber: data.rntNumber,
-      picture: data.picture,
+      picture: data.pictureAgency,
       agencyId,
       status: 'active',
       approvalStatus: 'PENDING' as any, // Pendiente de aprobación por superadmin
@@ -88,13 +86,13 @@ export class RegisterAgencyUseCase {
     // Asignar al usuario como admin de la agencia
     await this.agencyMemberRepository.create({
       idAgency: agency.idAgency,
-      idUser: user.idUser.toString(), // Better Auth usa String para userId
+      idUser: user.idUser, // Better Auth usa String para userId
       role: 'admin',
     });
 
     return {
       user: {
-        idUser: user.idUser.toString(),
+        idUser: user.idUser,
         emailUser: user.emailUser,
         nameUser: user.nameUser,
         userId: user.userId,

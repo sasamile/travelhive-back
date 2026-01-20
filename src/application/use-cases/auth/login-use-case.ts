@@ -45,7 +45,7 @@ export class LoginUseCase {
 
     return {
       user: {
-        idUser: user.idUser.toString(),
+        idUser: user.idUser,
         emailUser: user.emailUser,
         nameUser: user.nameUser,
         userId: user.userId,
