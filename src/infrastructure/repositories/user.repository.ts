@@ -22,6 +22,20 @@ export class UserRepository implements IUserRepository {
     return this.mapToEntity(created);
   }
 
+  async createAccount(userId: string, email: string, hashedPassword: string): Promise<void> {
+    // Crear el registro en Account que Better Auth necesita para autenticación
+    // Better Auth usa 'credential' como providerId para email/password authentication
+    // El accountId es el email del usuario
+    await this.prisma.account.create({
+      data: {
+        userId,
+        accountId: email, // Better Auth usa el email como accountId para credenciales
+        providerId: 'credential', // Provider por defecto para email/password
+        password: hashedPassword, // Password hasheado con bcrypt
+      },
+    });
+  }
+
   async findByEmail(email: string): Promise<User | null> {
     const user = await this.prisma.user.findUnique({
       where: { email },

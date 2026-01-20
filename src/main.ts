@@ -2,10 +2,11 @@ import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { BigIntSerializationInterceptor } from './presentation/interceptors/bigint-serialization.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
-    bodyParser: false, // Required for Better Auth
+    bodyParser: true, // Habilitado para soportar multipart/form-data
   });
 
   // Habilitar validación global
@@ -14,8 +15,14 @@ async function bootstrap() {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
     }),
   );
+
+  // Interceptor global para serializar BigInt a string
+  app.useGlobalInterceptors(new BigIntSerializationInterceptor());
 
   // Habilitar CORS - permite peticiones desde cualquier origen (ajustar en producción)
   app.enableCors({

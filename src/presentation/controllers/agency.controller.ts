@@ -9,7 +9,13 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  UseInterceptors,
+  UploadedFiles,
+  ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { ParseJsonFieldInterceptor } from '../interceptors/parse-json-field.interceptor';
 import { Session, AllowAnonymous } from '@thallesp/nestjs-better-auth';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
 import { RegisterAgencyUseCase } from '../../application/use-cases/auth/register-use-case';
@@ -23,18 +29,58 @@ import { RegisterAgencyDto } from '../dto/register-agency.dto';
 import { CreateTripDto } from '../dto/create-trip.dto';
 import { UpdateTripDto } from '../dto/update-trip.dto';
 import { CreateExpeditionDto } from '../dto/create-expedition.dto';
+import { S3Service } from '../../config/storage/s3.service';
+import { PrismaService } from '../../infrastructure/database/prisma/prisma.service';
 
 @Controller('agencies')
 export class AgencyController {
   constructor(
     private readonly registerAgencyUseCase: RegisterAgencyUseCase,
     private readonly createTripUseCase: CreateTripUseCase,
+    private readonly s3Service: S3Service,
     private readonly listTripsUseCase: ListTripsUseCase,
     private readonly updateTripUseCase: UpdateTripUseCase,
     private readonly deleteTripUseCase: DeleteTripUseCase,
     private readonly createExpeditionUseCase: CreateExpeditionUseCase,
     private readonly listExpeditionsUseCase: ListExpeditionsUseCase,
+    private readonly prisma: PrismaService,
   ) {}
+
+  /**
+   * Helper para obtener la agencia del usuario desde la sesión
+   * Si un usuario solo puede tener una agencia, retorna la aprobada o la más reciente
+   */
+  private async getUserAgencyId(userId: string): Promise<bigint> {
+    // Obtener todas las agencias del usuario con información completa
+    const agencyMembers = await this.prisma.agencyMember.findMany({
+      where: { idUser: userId },
+      include: { agency: true },
+      orderBy: {
+        createdAt: 'desc', // Ordenar por más reciente primero
+      },
+    });
+
+    if (!agencyMembers || agencyMembers.length === 0) {
+      throw new NotFoundException('No se encontró ninguna agencia asociada a tu usuario');
+    }
+
+    // Si solo hay una, retornarla directamente
+    if (agencyMembers.length === 1) {
+      return agencyMembers[0].idAgency;
+    }
+
+    // Si hay múltiples, buscar primero una aprobada (y priorizar la más reciente)
+    const approvedAgency = agencyMembers.find(
+      (member) => member.agency.approvalStatus === 'APPROVED',
+    );
+
+    if (approvedAgency) {
+      return approvedAgency.idAgency;
+    }
+
+    // Si no hay aprobada, usar la primera (ya está ordenada por más reciente)
+    return agencyMembers[0].idAgency;
+  }
 
   /**
    * Registra un nuevo usuario-agencia
@@ -66,28 +112,59 @@ export class AgencyController {
   }
 
   /**
-   * Crea un nuevo trip (experiencia) para la agencia
+   * Crea un nuevo trip (experiencia) para la agencia del usuario
+   * Acepta imágenes en el campo 'galleryImages' (múltiples archivos)
+   * La agencia se obtiene automáticamente de la sesión del usuario
    */
-  @Post(':agencyId/trips')
+  @Post('trips')
   @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(
+    FilesInterceptor('galleryImages', 20), // Máximo 20 imágenes
+    ParseJsonFieldInterceptor, // Parsea campos JSON en form-data
+  )
   async createTrip(
-    @Param('agencyId') agencyId: string,
     @Body() dto: CreateTripDto,
+    @UploadedFiles() files: any[], // Archivos subidos
     @Session() session: UserSession,
   ) {
+    // Obtener la agencia del usuario desde la sesión
+    // Este método ya garantiza que la agencia pertenece al usuario
+    const agencyId = await this.getUserAgencyId(session.user.id);
+    
+    // Subir imágenes a S3 si hay archivos
+    let uploadedImageUrls: string[] = [];
+    if (files && files.length > 0) {
+      uploadedImageUrls = await this.s3Service.uploadMultipleImages(files, 'trips');
+    }
+
+    // Si hay imágenes subidas, reemplazar las URLs en galleryImages
+    if (uploadedImageUrls.length > 0 && dto.galleryImages) {
+      // Combinar imágenes subidas con las que ya vienen en el DTO (si hay)
+      const combinedImages = uploadedImageUrls.map((url, index) => ({
+        imageUrl: url,
+        order: dto.galleryImages?.[index]?.order ?? index,
+      }));
+      
+      // Si había más imágenes en el DTO, mantenerlas
+      const existingImages = (dto.galleryImages || []).slice(uploadedImageUrls.length);
+      dto.galleryImages = [...combinedImages, ...existingImages];
+    } else if (uploadedImageUrls.length > 0) {
+      // Si no había galleryImages en el DTO, crear el array con las subidas
+      dto.galleryImages = uploadedImageUrls.map((url, index) => ({
+        imageUrl: url,
+        order: index,
+      }));
+    }
+
+    // Agregar el idAgency al DTO (obtenido de la sesión)
+    // Convertir BigInt a número para el DTO usando toString() para evitar pérdida de precisión
+    const tripData = {
+      ...dto,
+      idAgency: Number(agencyId.toString()),
+    };
+
     const trip = await this.createTripUseCase.execute(
-      {
-        idAgency: BigInt(agencyId),
-        idCity: BigInt(dto.idCity),
-        title: dto.title,
-        description: dto.description,
-        category: dto.category,
-        vibe: dto.vibe,
-        durationDays: dto.durationDays,
-        durationNights: dto.durationNights,
-        coverImage: dto.coverImage,
-        status: dto.status,
-      },
+      tripData,
       session.user.id,
     );
 
@@ -98,15 +175,16 @@ export class AgencyController {
   }
 
   /**
-   * Lista todos los trips de una agencia
+   * Lista todos los trips de la agencia del usuario
+   * La agencia se obtiene automáticamente de la sesión del usuario
    */
-  @Get(':agencyId/trips')
-  async listTrips(
-    @Param('agencyId') agencyId: string,
-    @Session() session: UserSession,
-  ) {
+  @Get('trips')
+  async listTrips(@Session() session: UserSession) {
+    // Obtener la agencia del usuario desde la sesión
+    const agencyId = await this.getUserAgencyId(session.user.id);
+    
     const trips = await this.listTripsUseCase.execute(
-      BigInt(agencyId),
+      agencyId,
       session.user.id,
     );
 
@@ -116,29 +194,22 @@ export class AgencyController {
   }
 
   /**
-   * Actualiza un trip existente
+   * Actualiza un trip existente de la agencia del usuario
+   * La agencia se obtiene automáticamente de la sesión del usuario
    */
-  @Put(':agencyId/trips/:tripId')
+  @Put('trips/:tripId')
   async updateTrip(
-    @Param('agencyId') agencyId: string,
     @Param('tripId') tripId: string,
     @Body() dto: UpdateTripDto,
     @Session() session: UserSession,
   ) {
+    // Obtener la agencia del usuario desde la sesión
+    const agencyId = await this.getUserAgencyId(session.user.id);
+    
     const trip = await this.updateTripUseCase.execute(
-      BigInt(agencyId),
+      agencyId,
       BigInt(tripId),
-      {
-        title: dto.title,
-        description: dto.description,
-        category: dto.category,
-        vibe: dto.vibe,
-        durationDays: dto.durationDays,
-        durationNights: dto.durationNights,
-        coverImage: dto.coverImage,
-        status: dto.status as any,
-        idCity: dto.idCity ? BigInt(dto.idCity) : undefined,
-      },
+      dto,
       session.user.id,
     );
 
@@ -149,17 +220,20 @@ export class AgencyController {
   }
 
   /**
-   * Elimina un trip
+   * Elimina un trip de la agencia del usuario
+   * La agencia se obtiene automáticamente de la sesión del usuario
    */
-  @Delete(':agencyId/trips/:tripId')
+  @Delete('trips/:tripId')
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteTrip(
-    @Param('agencyId') agencyId: string,
     @Param('tripId') tripId: string,
     @Session() session: UserSession,
   ) {
+    // Obtener la agencia del usuario desde la sesión
+    const agencyId = await this.getUserAgencyId(session.user.id);
+    
     await this.deleteTripUseCase.execute(
-      BigInt(agencyId),
+      agencyId,
       BigInt(tripId),
       session.user.id,
     );

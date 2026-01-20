@@ -2,6 +2,7 @@ import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { createAuthMiddleware, APIError } from 'better-auth/api';
 import { PrismaClient } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
 
 // Función para crear la instancia de auth desde PrismaService de NestJS
 export const createAuthInstance = (prisma: PrismaClient) => {
@@ -11,6 +12,15 @@ export const createAuthInstance = (prisma: PrismaClient) => {
     }),
     emailAndPassword: {
       enabled: true,
+      password: {
+        // Configurar bcrypt para que coincida con el hash que generamos manualmente
+        hash: async (password: string) => {
+          return await bcrypt.hash(password, 10);
+        },
+        verify: async ({ hash, password }: { hash: string; password: string }) => {
+          return await bcrypt.compare(password, hash);
+        },
+      },
     },
     baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3000',
     secret: process.env.BETTER_AUTH_SECRET || process.env.JWT_SECRET || 'your-secret-key-change-in-production',
@@ -36,51 +46,58 @@ export const createAuthInstance = (prisma: PrismaClient) => {
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
-        // Verificar que el usuario tenga una agencia aprobada antes de iniciar sesión
-        if (ctx.path === '/sign-in/email' || ctx.path === '/sign-up/email') {
-          if (ctx.path === '/sign-in/email' && ctx.body?.email) {
-            // Verificar si el usuario tiene agencias aprobadas
-            const user = await prisma.user.findUnique({
-              where: { email: ctx.body.email },
-              include: {
-                agencyMembers: {
-                  include: {
-                    agency: true,
-                  },
-                },
-              },
-            });
+        // NOTA: La validación de agencia aprobada se ha comentado temporalmente
+        // para permitir que los usuarios inicien sesión y puedan aprobar agencias.
+        // Esta validación debe implementarse a nivel de endpoint en lugar de en el hook de login.
+        
+        // TODO: Implementar validación de permisos a nivel de endpoint:
+        // - Los usuarios con agencias PENDING/REJECTED solo pueden ver su perfil y aprobar agencias (si son superadmin)
+        // - Las demás funcionalidades requieren una agencia APPROVED
+      }),
+      after: createAuthMiddleware(async (ctx) => {
+        // Agregar información de agencias a la respuesta del login
+        if (ctx.path === '/sign-in/email' && ctx.context.newSession) {
+          const userId = ctx.context.newSession.user.id;
+          
+          // Obtener las agencias del usuario
+          const agencyMembers = await prisma.agencyMember.findMany({
+            where: { idUser: userId },
+            include: { agency: true },
+          });
 
-            if (user && user.agencyMembers.length > 0) {
-              // Verificar si tiene al menos una agencia aprobada
-              const hasApprovedAgency = user.agencyMembers.some(
-                (member) => member.agency.approvalStatus === 'APPROVED'
-              );
+          // Formatear la información de agencias
+          const agencies = agencyMembers.map((member) => ({
+            idAgency: member.idAgency.toString(),
+            role: member.role,
+            agency: {
+              idAgency: member.agency.idAgency.toString(),
+              nameAgency: member.agency.nameAgency,
+              email: member.agency.email,
+              phone: member.agency.phone,
+              nit: member.agency.nit,
+              rntNumber: member.agency.rntNumber,
+              picture: member.agency.picture,
+              status: member.agency.status,
+              approvalStatus: member.agency.approvalStatus,
+              rejectionReason: member.agency.rejectionReason,
+              reviewedBy: member.agency.reviewedBy,
+              reviewedAt: member.agency.reviewedAt,
+              createdAt: member.agency.createdAt,
+              updatedAt: member.agency.updatedAt,
+            },
+          }));
 
-              if (!hasApprovedAgency) {
-                // Verificar si todas están pendientes o rechazadas
-                const hasPending = user.agencyMembers.some(
-                  (member) => member.agency.approvalStatus === 'PENDING'
-                );
-                const hasRejected = user.agencyMembers.some(
-                  (member) => member.agency.approvalStatus === 'REJECTED'
-                );
-
-                if (hasPending) {
-                  throw new APIError('FORBIDDEN', {
-                    message: 'Tu agencia está pendiente de aprobación. Por favor espera la revisión de un administrador.',
-                  });
-                }
-
-                if (hasRejected) {
-                  const rejectedAgency = user.agencyMembers.find(
-                    (member) => member.agency.approvalStatus === 'REJECTED'
-                  );
-                  throw new APIError('FORBIDDEN', {
-                    message: `Tu agencia fue rechazada.${rejectedAgency?.agency.rejectionReason ? ` Razón: ${rejectedAgency.agency.rejectionReason}` : ''}`,
-                  });
-                }
-              }
+          // Modificar la respuesta para incluir las agencias
+          const returned = ctx.context.returned as any;
+          if (returned) {
+            // Verificar si la respuesta tiene estructura { data: { user, ... } } o { user, ... }
+            const responseData = (returned as any).data || returned;
+            
+            if (responseData && typeof responseData === 'object' && 'user' in responseData) {
+              return ctx.json({
+                ...responseData,
+                agencies,
+              });
             }
           }
         }

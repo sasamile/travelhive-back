@@ -1,7 +1,32 @@
-import { IsString, IsOptional, IsNumber, IsEnum, Min } from 'class-validator';
-import { TripStatus } from '../../domain/entities/trip.entity';
+import {
+  IsString,
+  IsOptional,
+  IsNumber,
+  IsEnum,
+  IsArray,
+  ValidateNested,
+  IsBoolean,
+  Min,
+  IsDateString,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  TripStatus,
+  TripCategory,
+  PriceType,
+  Currency,
+} from '../../domain/entities/trip.entity';
+import {
+  RoutePointDto,
+  TripGalleryImageDto,
+  ItineraryDayDto,
+} from './create-trip.dto';
 
 export class UpdateTripDto {
+  @IsNumber()
+  @IsOptional()
+  idCity?: number;
+
   @IsString()
   @IsOptional()
   title?: string;
@@ -10,13 +35,29 @@ export class UpdateTripDto {
   @IsOptional()
   description?: string;
 
-  @IsString()
+  @IsEnum(TripCategory)
   @IsOptional()
-  category?: string;
+  category?: TripCategory;
 
   @IsString()
   @IsOptional()
-  vibe?: string;
+  destinationRegion?: string;
+
+  @IsNumber()
+  @IsOptional()
+  latitude?: number;
+
+  @IsNumber()
+  @IsOptional()
+  longitude?: number;
+
+  @IsDateString()
+  @IsOptional()
+  startDate?: string;
+
+  @IsDateString()
+  @IsOptional()
+  endDate?: string;
 
   @IsNumber()
   @IsOptional()
@@ -28,15 +69,52 @@ export class UpdateTripDto {
   @Min(0)
   durationNights?: number;
 
-  @IsString()
+  @IsNumber()
   @IsOptional()
-  coverImage?: string;
+  @Min(0)
+  price?: number;
+
+  @IsEnum(Currency)
+  @IsOptional()
+  currency?: Currency;
+
+  @IsEnum(PriceType)
+  @IsOptional()
+  priceType?: PriceType;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(1)
+  maxPersons?: number;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoutePointDto)
+  @IsOptional()
+  routePoints?: RoutePointDto[];
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TripGalleryImageDto)
+  @IsOptional()
+  galleryImages?: TripGalleryImageDto[];
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  coverImageIndex?: number;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ItineraryDayDto)
+  @IsOptional()
+  itinerary?: ItineraryDayDto[];
 
   @IsEnum(TripStatus)
   @IsOptional()
   status?: TripStatus;
 
-  @IsNumber()
+  @IsBoolean()
   @IsOptional()
-  idCity?: number;
+  isActive?: boolean;
 }

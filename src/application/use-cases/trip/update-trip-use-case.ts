@@ -2,19 +2,8 @@ import { Injectable, Inject, ForbiddenException, NotFoundException } from '@nest
 import type { ITripRepository } from '../../../domain/ports/trip.repository.port';
 import type { IAgencyMemberRepository } from '../../../domain/ports/agency.repository.port';
 import { TRIP_REPOSITORY, AGENCY_MEMBER_REPOSITORY } from '../../../domain/ports/tokens';
-import { Trip, TripStatus } from '../../../domain/entities/trip.entity';
-
-export interface UpdateTripDto {
-  title?: string;
-  description?: string;
-  category?: string;
-  vibe?: string;
-  durationDays?: number;
-  durationNights?: number;
-  coverImage?: string;
-  status?: TripStatus;
-  idCity?: bigint;
-}
+import { Trip, TripStatus, TripCategory } from '../../../domain/entities/trip.entity';
+import { UpdateTripDto } from '../../../presentation/dto/update-trip.dto';
 
 @Injectable()
 export class UpdateTripUseCase {
@@ -48,10 +37,42 @@ export class UpdateTripUseCase {
       throw new ForbiddenException('Solo administradores y editores pueden actualizar trips');
     }
 
-    const updatedTrip = await this.tripRepository.update(tripId, {
-      ...data,
-      status: data.status as TripStatus | undefined,
-    });
+    const updateData: Partial<Trip> = {
+      ...(data.idCity && { idCity: BigInt(data.idCity) }),
+      ...(data.title && { title: data.title }),
+      ...(data.description !== undefined && { description: data.description }),
+      ...(data.category && { category: data.category as TripCategory }),
+      ...(data.destinationRegion !== undefined && { destinationRegion: data.destinationRegion }),
+      ...(data.latitude !== undefined && { latitude: data.latitude }),
+      ...(data.longitude !== undefined && { longitude: data.longitude }),
+      ...(data.startDate && { startDate: new Date(data.startDate) }),
+      ...(data.endDate && { endDate: new Date(data.endDate) }),
+      ...(data.durationDays !== undefined && { durationDays: data.durationDays }),
+      ...(data.durationNights !== undefined && { durationNights: data.durationNights }),
+      ...(data.price !== undefined && { price: data.price }),
+      ...(data.currency && { currency: data.currency }),
+      ...(data.priceType && { priceType: data.priceType }),
+      ...(data.maxPersons !== undefined && { maxPersons: data.maxPersons }),
+      ...(data.coverImageIndex !== undefined && {
+        coverImageIndex: data.coverImageIndex,
+        coverImage:
+          data.galleryImages && data.coverImageIndex !== undefined
+            ? data.galleryImages[data.coverImageIndex]?.imageUrl
+            : undefined,
+      }),
+      ...(data.status && { status: data.status }),
+      ...(data.isActive !== undefined && { isActive: data.isActive }),
+      ...(data.routePoints && { routePoints: data.routePoints }),
+      ...(data.galleryImages && { galleryImages: data.galleryImages }),
+      ...(data.itinerary && { itineraryDays: data.itinerary }),
+    };
+
+    // Si el status cambia a PUBLISHED, establecer publishedAt
+    if (data.status === TripStatus.PUBLISHED && trip.status !== TripStatus.PUBLISHED) {
+      updateData.publishedAt = new Date();
+    }
+
+    const updatedTrip = await this.tripRepository.update(tripId, updateData);
     return updatedTrip;
   }
 }

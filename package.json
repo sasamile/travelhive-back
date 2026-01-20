@@ -22,10 +22,12 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:init": "ts-node -r tsconfig-paths/register scripts/init-database.ts",
+    "prisma:seed:cities": "ts-node -r tsconfig-paths/register prisma/seed-cities.ts",
     "better-auth:generate": "npx @better-auth/cli@latest generate",
     "better-auth:secret": "npx @better-auth/cli@latest secret"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.971.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^3.2.0",
     "@nestjs/core": "^11.0.1",
@@ -36,6 +38,7 @@
     "@prisma/adapter-pg": "^7.2.0",
     "@prisma/client": "^7.2.0",
     "@thallesp/nestjs-better-auth": "^2.2.2",
+    "@types/multer": "^2.0.0",
     "bcryptjs": "^2.4.3",
     "better-auth": "^1.4.15",
     "class-transformer": "^0.5.1",

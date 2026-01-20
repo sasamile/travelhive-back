@@ -2,6 +2,18 @@
 CREATE TYPE "TripStatus" AS ENUM ('DRAFT', 'PUBLISHED', 'ARCHIVED');
 
 -- CreateEnum
+CREATE TYPE "TripCategory" AS ENUM ('ADVENTURE', 'LUXURY', 'CULTURAL', 'WELLNESS', 'WILDLIFE');
+
+-- CreateEnum
+CREATE TYPE "PriceType" AS ENUM ('ADULTS', 'CHILDREN', 'BOTH');
+
+-- CreateEnum
+CREATE TYPE "ActivityType" AS ENUM ('ACTIVITY', 'ACCOMMODATION', 'TRANSPORT', 'MEAL', 'POI');
+
+-- CreateEnum
+CREATE TYPE "Currency" AS ENUM ('COP', 'USD', 'EUR');
+
+-- CreateEnum
 CREATE TYPE "ExpeditionStatus" AS ENUM ('AVAILABLE', 'FULL', 'CANCELLED', 'COMPLETED');
 
 -- CreateEnum
@@ -27,7 +39,6 @@ CREATE TABLE "user" (
     "updated_at" TIMESTAMP(3) NOT NULL,
     "dni_user" STRING,
     "phone_user" STRING,
-    "picture_user" STRING,
 
     CONSTRAINT "user_pkey" PRIMARY KEY ("id")
 );
@@ -91,7 +102,6 @@ CREATE TABLE "agencies" (
     "name_agency" STRING NOT NULL,
     "email" STRING,
     "phone" STRING,
-    "agency_id" STRING,
     "nit" STRING,
     "rnt_number" STRING,
     "picture" STRING,
@@ -125,16 +135,83 @@ CREATE TABLE "trips" (
     "id_city" INT8 NOT NULL,
     "title" STRING NOT NULL,
     "description" STRING,
-    "category" STRING NOT NULL,
-    "vibe" STRING,
+    "category" "TripCategory" NOT NULL,
+    "destination_region" STRING,
+    "latitude" DECIMAL(65,30),
+    "longitude" DECIMAL(65,30),
+    "start_date" TIMESTAMP(3),
+    "end_date" TIMESTAMP(3),
     "duration_days" INT4 NOT NULL,
     "duration_nights" INT4 NOT NULL,
+    "price" DECIMAL(65,30),
+    "currency" "Currency",
+    "price_type" "PriceType",
+    "max_persons" INT4,
     "cover_image" STRING,
+    "cover_image_index" INT4,
     "status" "TripStatus" NOT NULL DEFAULT 'DRAFT',
+    "is_active" BOOL NOT NULL DEFAULT true,
+    "published_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "trips_pkey" PRIMARY KEY ("id_trip")
+);
+
+-- CreateTable
+CREATE TABLE "route_points" (
+    "id" INT8 NOT NULL DEFAULT unique_rowid(),
+    "id_trip" INT8 NOT NULL,
+    "name" STRING NOT NULL,
+    "latitude" DECIMAL(65,30) NOT NULL,
+    "longitude" DECIMAL(65,30) NOT NULL,
+    "order" INT4 NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "route_points_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "trip_gallery_images" (
+    "id" INT8 NOT NULL DEFAULT unique_rowid(),
+    "id_trip" INT8 NOT NULL,
+    "image_url" STRING NOT NULL,
+    "order" INT4 NOT NULL DEFAULT 0,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "trip_gallery_images_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "itinerary_days" (
+    "id" INT8 NOT NULL DEFAULT unique_rowid(),
+    "id_trip" INT8 NOT NULL,
+    "day" INT4 NOT NULL,
+    "title" STRING NOT NULL,
+    "subtitle" STRING,
+    "order" INT4 NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "itinerary_days_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "itinerary_activities" (
+    "id" INT8 NOT NULL DEFAULT unique_rowid(),
+    "id_day" INT8 NOT NULL,
+    "type" "ActivityType" NOT NULL,
+    "title" STRING NOT NULL,
+    "description" STRING,
+    "time" STRING,
+    "image_url" STRING,
+    "latitude" DECIMAL(65,30),
+    "longitude" DECIMAL(65,30),
+    "poi_id" STRING,
+    "order" INT4 NOT NULL DEFAULT 0,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "itinerary_activities_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -231,9 +308,6 @@ CREATE UNIQUE INDEX "user_email_key" ON "user"("email");
 CREATE UNIQUE INDEX "session_token_key" ON "session"("token");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "agencies_agency_id_key" ON "agencies"("agency_id");
-
--- CreateIndex
 CREATE UNIQUE INDEX "agencies_nit_key" ON "agencies"("nit");
 
 -- CreateIndex
@@ -241,6 +315,18 @@ CREATE UNIQUE INDEX "agencies_rnt_number_key" ON "agencies"("rnt_number");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "agency_members_id_agency_user_id_key" ON "agency_members"("id_agency", "user_id");
+
+-- CreateIndex
+CREATE INDEX "route_points_id_trip_idx" ON "route_points"("id_trip");
+
+-- CreateIndex
+CREATE INDEX "trip_gallery_images_id_trip_idx" ON "trip_gallery_images"("id_trip");
+
+-- CreateIndex
+CREATE INDEX "itinerary_days_id_trip_idx" ON "itinerary_days"("id_trip");
+
+-- CreateIndex
+CREATE INDEX "itinerary_activities_id_day_idx" ON "itinerary_activities"("id_day");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "discount_codes_code_name_key" ON "discount_codes"("code_name");
@@ -262,6 +348,18 @@ ALTER TABLE "trips" ADD CONSTRAINT "trips_id_agency_fkey" FOREIGN KEY ("id_agenc
 
 -- AddForeignKey
 ALTER TABLE "trips" ADD CONSTRAINT "trips_id_city_fkey" FOREIGN KEY ("id_city") REFERENCES "cities"("id_city") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "route_points" ADD CONSTRAINT "route_points_id_trip_fkey" FOREIGN KEY ("id_trip") REFERENCES "trips"("id_trip") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "trip_gallery_images" ADD CONSTRAINT "trip_gallery_images_id_trip_fkey" FOREIGN KEY ("id_trip") REFERENCES "trips"("id_trip") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "itinerary_days" ADD CONSTRAINT "itinerary_days_id_trip_fkey" FOREIGN KEY ("id_trip") REFERENCES "trips"("id_trip") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "itinerary_activities" ADD CONSTRAINT "itinerary_activities_id_day_fkey" FOREIGN KEY ("id_day") REFERENCES "itinerary_days"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "expeditions" ADD CONSTRAINT "expeditions_id_trip_fkey" FOREIGN KEY ("id_trip") REFERENCES "trips"("id_trip") ON DELETE CASCADE ON UPDATE CASCADE;

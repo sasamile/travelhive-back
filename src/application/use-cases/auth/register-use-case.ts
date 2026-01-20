@@ -54,10 +54,7 @@ export class RegisterAgencyUseCase {
     // Hash de la contraseña
     const hashedPassword = await bcrypt.hash(data.password, 10);
 
-    // Generar userId único
-    const userId = `user_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-
-    // Crear el usuario
+    // Crear el usuario (Better Auth generará el ID automáticamente)
     const user = await this.userRepository.create({
       emailUser: data.emailUser,
       nameUser: data.nameUser,
@@ -65,12 +62,14 @@ export class RegisterAgencyUseCase {
       dniUser: data.dniUser,
       phoneUser: data.phoneUser,
       picture: data.picture,
-      userId,
     });
+
+    // Crear la cuenta (Account) en Better Auth para que pueda autenticarse
+    // Esto es necesario porque Better Auth almacena las credenciales en la tabla 'account'
+    await this.userRepository.createAccount(user.idUser, data.emailUser, hashedPassword);
 
     // Crear la agencia con estado PENDING
     // El email de la agencia es el mismo que el email del usuario
-    const agencyId = `agency_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     const agency = await this.agencyRepository.create({
       nameAgency: data.nameAgency,
       email: data.emailUser, // Usar el email del usuario como email de la agencia
@@ -78,7 +77,6 @@ export class RegisterAgencyUseCase {
       nit: data.nit,
       rntNumber: data.rntNumber,
       picture: data.pictureAgency,
-      agencyId,
       status: 'active',
       approvalStatus: 'PENDING' as any, // Pendiente de aprobación por superadmin
     });

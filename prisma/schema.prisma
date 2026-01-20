@@ -15,6 +15,34 @@ enum TripStatus {
   ARCHIVED
 }
 
+enum TripCategory {
+  ADVENTURE
+  LUXURY
+  CULTURAL
+  WELLNESS
+  WILDLIFE
+}
+
+enum PriceType {
+  ADULTS
+  CHILDREN
+  BOTH
+}
+
+enum ActivityType {
+  ACTIVITY
+  ACCOMMODATION
+  TRANSPORT
+  MEAL
+  POI
+}
+
+enum Currency {
+  COP
+  USD
+  EUR
+}
+
 enum ExpeditionStatus {
   AVAILABLE
   FULL
@@ -57,8 +85,8 @@ model User {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   // Campos adicionales personalizados
-  dniUser     String? @map("dni_user")
-  phoneUser   String? @map("phone_user")
+  dniUser   String? @map("dni_user")
+  phoneUser String? @map("phone_user")
 
   // Relaciones
   sessions          Session[]
@@ -135,7 +163,6 @@ model Agency {
   nameAgency      String               @map("name_agency")
   email           String?
   phone           String?
-  agencyId        String?              @unique @map("agency_id")
   nit             String?              @unique // Número de Identificación Tributaria
   rntNumber       String?              @unique @map("rnt_number") // Registro Nacional de Turismo
   picture         String?
@@ -173,27 +200,110 @@ model AgencyMember {
 
 // Viajes
 model Trip {
-  idTrip         BigInt     @id @default(autoincrement()) @map("id_trip")
-  idAgency       BigInt     @map("id_agency")
-  idCity         BigInt     @map("id_city")
-  title          String
-  description    String?
-  category       String
-  vibe           String?
-  durationDays   Int        @map("duration_days")
-  durationNights Int        @map("duration_nights")
-  coverImage     String?    @map("cover_image")
-  status         TripStatus @default(DRAFT)
-  createdAt      DateTime   @default(now()) @map("created_at")
-  updatedAt      DateTime   @updatedAt @map("updated_at")
+  idTrip            BigInt       @id @default(autoincrement()) @map("id_trip")
+  idAgency          BigInt       @map("id_agency")
+  idCity            BigInt       @map("id_city")
+  title             String
+  description       String?
+  category          TripCategory
+  destinationRegion String?      @map("destination_region")
+  latitude          Decimal?
+  longitude         Decimal?
+  startDate         DateTime?    @map("start_date")
+  endDate           DateTime?    @map("end_date")
+  durationDays      Int          @map("duration_days")
+  durationNights    Int          @map("duration_nights")
+  price             Decimal?
+  currency          Currency?
+  priceType         PriceType?   @map("price_type")
+  maxPersons        Int?         @map("max_persons")
+  coverImage        String?      @map("cover_image")
+  coverImageIndex   Int?         @map("cover_image_index")
+  status            TripStatus   @default(DRAFT)
+  isActive          Boolean      @default(true) @map("is_active")
+  publishedAt       DateTime?    @map("published_at")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
 
-  agency        Agency         @relation(fields: [idAgency], references: [idAgency], onDelete: Cascade)
-  city          City           @relation(fields: [idCity], references: [idCity], onDelete: Restrict)
+  agency        Agency             @relation(fields: [idAgency], references: [idAgency], onDelete: Cascade)
+  city          City               @relation(fields: [idCity], references: [idCity], onDelete: Restrict)
+  routePoints   RoutePoint[]
+  galleryImages TripGalleryImage[]
+  itineraryDays ItineraryDay[]
   expeditions   Expedition[]
   bookings      Booking[]
   discountCodes DiscountCode[]
 
   @@map("trips")
+}
+
+// Puntos de ruta del viaje
+model RoutePoint {
+  id        BigInt   @id @default(autoincrement())
+  idTrip    BigInt   @map("id_trip")
+  name      String
+  latitude  Decimal
+  longitude Decimal
+  order     Int
+  createdAt DateTime @default(now()) @map("created_at")
+
+  trip Trip @relation(fields: [idTrip], references: [idTrip], onDelete: Cascade)
+
+  @@index([idTrip])
+  @@map("route_points")
+}
+
+// Imágenes de galería del viaje
+model TripGalleryImage {
+  id        BigInt   @id @default(autoincrement())
+  idTrip    BigInt   @map("id_trip")
+  imageUrl  String   @map("image_url")
+  order     Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  trip Trip @relation(fields: [idTrip], references: [idTrip], onDelete: Cascade)
+
+  @@index([idTrip])
+  @@map("trip_gallery_images")
+}
+
+// Días del itinerario
+model ItineraryDay {
+  id        BigInt   @id @default(autoincrement())
+  idTrip    BigInt   @map("id_trip")
+  day       Int
+  title     String
+  subtitle  String?
+  order     Int
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  trip       Trip                @relation(fields: [idTrip], references: [idTrip], onDelete: Cascade)
+  activities ItineraryActivity[]
+
+  @@index([idTrip])
+  @@map("itinerary_days")
+}
+
+// Actividades del itinerario
+model ItineraryActivity {
+  id          BigInt       @id @default(autoincrement())
+  idDay       BigInt       @map("id_day")
+  type        ActivityType
+  title       String
+  description String?
+  time        String?
+  imageUrl    String?      @map("image_url")
+  latitude    Decimal?
+  longitude   Decimal?
+  poiId       String?      @map("poi_id")
+  order       Int          @default(0)
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  day ItineraryDay @relation(fields: [idDay], references: [id], onDelete: Cascade)
+
+  @@index([idDay])
+  @@map("itinerary_activities")
 }
 
 // Expediciones (instancias de viajes con fechas)

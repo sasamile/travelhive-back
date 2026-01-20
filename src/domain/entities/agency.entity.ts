@@ -9,7 +9,6 @@ export class Agency {
   nameAgency: string;
   email?: string;
   phone?: string;
-  agencyId?: string;
   nit?: string;
   rntNumber?: string;
   picture?: string;
