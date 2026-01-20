@@ -1,9 +1,10 @@
-import { Injectable, Inject, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, Inject, ForbiddenException, BadRequestException, NotFoundException } from '@nestjs/common';
 import type { ITripRepository } from '../../../domain/ports/trip.repository.port';
 import type { IAgencyMemberRepository } from '../../../domain/ports/agency.repository.port';
 import { TRIP_REPOSITORY, AGENCY_MEMBER_REPOSITORY } from '../../../domain/ports/tokens';
 import { Trip, TripStatus, TripCategory } from '../../../domain/entities/trip.entity';
 import { CreateTripDto } from '../../../presentation/dto/create-trip.dto';
+import { PrismaService } from '../../../infrastructure/database/prisma/prisma.service';
 
 @Injectable()
 export class CreateTripUseCase {
@@ -12,6 +13,7 @@ export class CreateTripUseCase {
     private readonly tripRepository: ITripRepository,
     @Inject(AGENCY_MEMBER_REPOSITORY)
     private readonly agencyMemberRepository: IAgencyMemberRepository,
+    private readonly prisma: PrismaService,
   ) {}
 
   async execute(data: CreateTripDto, userId: string): Promise<Trip> {
@@ -20,9 +22,9 @@ export class CreateTripUseCase {
       throw new BadRequestException('idAgency is required');
     }
 
-    // Convertir a BigInt para la búsqueda
+    // Convertir string a BigInt para la búsqueda (evita pérdida de precisión)
     const agencyIdBigInt = BigInt(data.idAgency);
-
+    
     // Verificar que el usuario pertenezca a la agencia
     const membership = await this.agencyMemberRepository.findByAgencyAndUser(
       agencyIdBigInt,
@@ -31,6 +33,7 @@ export class CreateTripUseCase {
     if (!membership) {
       // Para debugging: verificar si el usuario tiene alguna agencia
       const userAgencies = await this.agencyMemberRepository.findUserAgencies(userId);
+      console.log('[DEBUG CreateTripUseCase] Agencias del usuario:', userAgencies.map(a => a.idAgency.toString()));
       throw new ForbiddenException(
         `No tienes permiso para crear trips en esta agencia. ` +
         `AgencyId recibido: ${data.idAgency}, UserId: ${userId}. ` +
@@ -43,9 +46,23 @@ export class CreateTripUseCase {
       throw new ForbiddenException('Solo administradores y editores pueden crear trips');
     }
 
+    // Convertir string a BigInt para idCity (evita pérdida de precisión)
+    const cityIdBigInt = BigInt(data.idCity);
+    
+    // Verificar que la ciudad existe
+    const city = await this.prisma.city.findUnique({
+      where: { idCity: cityIdBigInt },
+    });
+    
+    if (!city) {
+      console.log('[DEBUG CreateTripUseCase] CityId recibido:', data.idCity);
+      console.log('[DEBUG CreateTripUseCase] CityId como BigInt:', cityIdBigInt.toString());
+      throw new NotFoundException(`La ciudad con ID ${data.idCity} no existe`);
+    }
+
     const trip = await this.tripRepository.create({
-      idAgency: BigInt(data.idAgency),
-      idCity: BigInt(data.idCity),
+      idAgency: agencyIdBigInt,
+      idCity: cityIdBigInt,
       title: data.title,
       description: data.description,
       category: data.category as TripCategory,

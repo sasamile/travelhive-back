@@ -263,8 +263,8 @@ export class TripRepository implements ITripRepository {
       destinationRegion: prismaTrip.destinationRegion,
       latitude: prismaTrip.latitude ? Number(prismaTrip.latitude) : undefined,
       longitude: prismaTrip.longitude ? Number(prismaTrip.longitude) : undefined,
-      startDate: prismaTrip.startDate,
-      endDate: prismaTrip.endDate,
+      startDate: prismaTrip.startDate ? new Date(prismaTrip.startDate) : undefined,
+      endDate: prismaTrip.endDate ? new Date(prismaTrip.endDate) : undefined,
       durationDays: prismaTrip.durationDays,
       durationNights: prismaTrip.durationNights,
       price: prismaTrip.price ? Number(prismaTrip.price) : undefined,
@@ -275,9 +275,9 @@ export class TripRepository implements ITripRepository {
       coverImageIndex: prismaTrip.coverImageIndex,
       status: prismaTrip.status as TripStatus,
       isActive: prismaTrip.isActive ?? true,
-      publishedAt: prismaTrip.publishedAt,
-      createdAt: prismaTrip.createdAt,
-      updatedAt: prismaTrip.updatedAt,
+      publishedAt: prismaTrip.publishedAt ? new Date(prismaTrip.publishedAt) : undefined,
+      createdAt: prismaTrip.createdAt ? new Date(prismaTrip.createdAt) : new Date(),
+      updatedAt: prismaTrip.updatedAt ? new Date(prismaTrip.updatedAt) : new Date(),
       routePoints: prismaTrip.routePoints
         ? prismaTrip.routePoints.map((rp: any) => ({
             id: rp.id,

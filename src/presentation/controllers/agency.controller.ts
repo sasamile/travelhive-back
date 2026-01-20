@@ -48,38 +48,55 @@ export class AgencyController {
 
   /**
    * Helper para obtener la agencia del usuario desde la sesión
-   * Si un usuario solo puede tener una agencia, retorna la aprobada o la más reciente
+   * Retorna la primera agencia aprobada, o la primera si no hay aprobadas
+   * Usa exactamente la misma lógica que el hook de login
    */
   private async getUserAgencyId(userId: string): Promise<bigint> {
-    // Obtener todas las agencias del usuario con información completa
+    // Consulta exacta igual que el hook de login en auth.config.ts
     const agencyMembers = await this.prisma.agencyMember.findMany({
       where: { idUser: userId },
       include: { agency: true },
-      orderBy: {
-        createdAt: 'desc', // Ordenar por más reciente primero
-      },
     });
 
     if (!agencyMembers || agencyMembers.length === 0) {
       throw new NotFoundException('No se encontró ninguna agencia asociada a tu usuario');
     }
 
-    // Si solo hay una, retornarla directamente
+    // Debug: Log de todas las agencias encontradas
+    console.log('[DEBUG getUserAgencyId] Agencias encontradas para usuario:', userId);
+    agencyMembers.forEach((member, index) => {
+      console.log(`[DEBUG getUserAgencyId] Agencia ${index + 1}:`, {
+        idAgency: member.idAgency.toString(),
+        role: member.role,
+        approvalStatus: member.agency.approvalStatus,
+      });
+    });
+
+    // Si solo hay una agencia, retornarla directamente
     if (agencyMembers.length === 1) {
-      return agencyMembers[0].idAgency;
+      const selectedAgency = agencyMembers[0].idAgency;
+      console.log('[DEBUG getUserAgencyId] Retornando única agencia:', selectedAgency.toString());
+      return selectedAgency;
     }
 
-    // Si hay múltiples, buscar primero una aprobada (y priorizar la más reciente)
-    const approvedAgency = agencyMembers.find(
-      (member) => member.agency.approvalStatus === 'APPROVED',
-    );
+    // Si hay múltiples, buscar la primera aprobada
+    // Ordenar: aprobadas primero, luego por fecha de creación (más reciente primero)
+    const sortedAgencies = [...agencyMembers].sort((a, b) => {
+      // Priorizar aprobadas
+      if (a.agency.approvalStatus === 'APPROVED' && b.agency.approvalStatus !== 'APPROVED') {
+        return -1;
+      }
+      if (b.agency.approvalStatus === 'APPROVED' && a.agency.approvalStatus !== 'APPROVED') {
+        return 1;
+      }
+      // Si mismo estado, ordenar por fecha (más reciente primero)
+      return b.createdAt.getTime() - a.createdAt.getTime();
+    });
 
-    if (approvedAgency) {
-      return approvedAgency.idAgency;
-    }
-
-    // Si no hay aprobada, usar la primera (ya está ordenada por más reciente)
-    return agencyMembers[0].idAgency;
+    // Retornar la primera (priorizando aprobadas)
+    const selectedAgency = sortedAgencies[0].idAgency;
+    console.log('[DEBUG getUserAgencyId] Retornando agencia seleccionada (múltiples):', selectedAgency.toString());
+    return selectedAgency;
   }
 
   /**
@@ -131,6 +148,10 @@ export class AgencyController {
     // Este método ya garantiza que la agencia pertenece al usuario
     const agencyId = await this.getUserAgencyId(session.user.id);
     
+    // Debug: Log para verificar el agencyId obtenido
+    console.log('[DEBUG createTrip] AgencyId obtenido:', agencyId.toString());
+    console.log('[DEBUG createTrip] UserId:', session.user.id);
+    
     // Subir imágenes a S3 si hay archivos
     let uploadedImageUrls: string[] = [];
     if (files && files.length > 0) {
@@ -157,10 +178,10 @@ export class AgencyController {
     }
 
     // Agregar el idAgency al DTO (obtenido de la sesión)
-    // Convertir BigInt a número para el DTO usando toString() para evitar pérdida de precisión
+    // Usar string para evitar pérdida de precisión con BigInt grandes
     const tripData = {
       ...dto,
-      idAgency: Number(agencyId.toString()),
+      idAgency: agencyId.toString(),
     };
 
     const trip = await this.createTripUseCase.execute(

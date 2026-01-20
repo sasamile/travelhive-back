@@ -111,13 +111,13 @@ export class ItineraryDayDto implements ItineraryDay {
 }
 
 export class CreateTripDto {
-  @IsNumber()
+  @IsString()
   @IsOptional() // Opcional porque se obtiene de la sesión del usuario
-  idAgency?: number;
+  idAgency?: string;
 
-  @IsNumber()
+  @IsString()
   @IsNotEmpty()
-  idCity: number;
+  idCity: string;
 
   @IsString()
   @IsNotEmpty()
