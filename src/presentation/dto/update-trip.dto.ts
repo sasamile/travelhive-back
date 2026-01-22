@@ -23,9 +23,9 @@ import {
 } from './create-trip.dto';
 
 export class UpdateTripDto {
-  @IsNumber()
+  @IsString()
   @IsOptional()
-  idCity?: number;
+  idCity?: string;
 
   @IsString()
   @IsOptional()

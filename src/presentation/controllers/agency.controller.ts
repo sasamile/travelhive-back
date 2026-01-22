@@ -3,9 +3,11 @@ import {
   Post,
   Get,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
+  Query,
   HttpCode,
   HttpStatus,
   UseGuards,
@@ -21,14 +23,21 @@ import type { UserSession } from '@thallesp/nestjs-better-auth';
 import { RegisterAgencyUseCase } from '../../application/use-cases/auth/register-use-case';
 import { CreateTripUseCase } from '../../application/use-cases/trip/create-trip-use-case';
 import { ListTripsUseCase } from '../../application/use-cases/trip/list-trips-use-case';
+import { GetTripByIdUseCase } from '../../application/use-cases/trip/get-trip-by-id-use-case';
 import { UpdateTripUseCase } from '../../application/use-cases/trip/update-trip-use-case';
 import { DeleteTripUseCase } from '../../application/use-cases/trip/delete-trip-use-case';
+import { ChangeTripStatusUseCase } from '../../application/use-cases/trip/change-trip-status-use-case';
+import { ToggleTripActiveUseCase } from '../../application/use-cases/trip/toggle-trip-active-use-case';
 import { CreateExpeditionUseCase } from '../../application/use-cases/expedition/create-expedition-use-case';
 import { ListExpeditionsUseCase } from '../../application/use-cases/expedition/list-expeditions-use-case';
+import { ListAgencyExpeditionsUseCase } from '../../application/use-cases/expedition/list-agency-expeditions-use-case';
 import { RegisterAgencyDto } from '../dto/register-agency.dto';
 import { CreateTripDto } from '../dto/create-trip.dto';
 import { UpdateTripDto } from '../dto/update-trip.dto';
+import { ChangeTripStatusDto } from '../dto/change-trip-status.dto';
+import { ToggleTripActiveDto } from '../dto/toggle-trip-active.dto';
 import { CreateExpeditionDto } from '../dto/create-expedition.dto';
+import { ListExpeditionsDto } from '../dto/list-expeditions.dto';
 import { S3Service } from '../../config/storage/s3.service';
 import { PrismaService } from '../../infrastructure/database/prisma/prisma.service';
 
@@ -39,10 +48,14 @@ export class AgencyController {
     private readonly createTripUseCase: CreateTripUseCase,
     private readonly s3Service: S3Service,
     private readonly listTripsUseCase: ListTripsUseCase,
+    private readonly getTripByIdUseCase: GetTripByIdUseCase,
     private readonly updateTripUseCase: UpdateTripUseCase,
     private readonly deleteTripUseCase: DeleteTripUseCase,
+    private readonly changeTripStatusUseCase: ChangeTripStatusUseCase,
+    private readonly toggleTripActiveUseCase: ToggleTripActiveUseCase,
     private readonly createExpeditionUseCase: CreateExpeditionUseCase,
     private readonly listExpeditionsUseCase: ListExpeditionsUseCase,
+    private readonly listAgencyExpeditionsUseCase: ListAgencyExpeditionsUseCase,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -196,36 +209,103 @@ export class AgencyController {
   }
 
   /**
-   * Lista todos los trips de la agencia del usuario
+   * Lista todas las expediciones de la agencia del usuario con información completa
+   * Incluye ocupación, ingresos, filtros por estado y paginación
    * La agencia se obtiene automáticamente de la sesión del usuario
    */
   @Get('trips')
-  async listTrips(@Session() session: UserSession) {
+  async listTrips(
+    @Session() session: UserSession,
+    @Query() query: ListExpeditionsDto,
+  ) {
     // Obtener la agencia del usuario desde la sesión
     const agencyId = await this.getUserAgencyId(session.user.id);
     
-    const trips = await this.listTripsUseCase.execute(
+    const result = await this.listAgencyExpeditionsUseCase.execute(
       agencyId,
+      session.user.id,
+      {
+        status: query.status as string | undefined,
+        search: query.search,
+        date: query.date,
+        page: query.page,
+        limit: query.limit,
+      },
+    );
+
+    return result;
+  }
+
+  /**
+   * Obtiene un trip individual por ID
+   * La agencia se obtiene automáticamente de la sesión del usuario
+   */
+  @Get('trips/:tripId')
+  async getTripById(
+    @Param('tripId') tripId: string,
+    @Session() session: UserSession,
+  ) {
+    // Obtener la agencia del usuario desde la sesión
+    const agencyId = await this.getUserAgencyId(session.user.id);
+    
+    const trip = await this.getTripByIdUseCase.execute(
+      agencyId,
+      BigInt(tripId),
       session.user.id,
     );
 
     return {
-      data: trips,
+      data: trip,
     };
   }
 
   /**
    * Actualiza un trip existente de la agencia del usuario
+   * Acepta imágenes en el campo 'galleryImages' (múltiples archivos)
    * La agencia se obtiene automáticamente de la sesión del usuario
    */
-  @Put('trips/:tripId')
+  @Patch('trips/:tripId')
+  @UseInterceptors(
+    FilesInterceptor('galleryImages', 20), // Máximo 20 imágenes
+    ParseJsonFieldInterceptor, // Parsea campos JSON en form-data
+  )
   async updateTrip(
     @Param('tripId') tripId: string,
     @Body() dto: UpdateTripDto,
+    @UploadedFiles() files: any[], // Archivos subidos
     @Session() session: UserSession,
   ) {
     // Obtener la agencia del usuario desde la sesión
     const agencyId = await this.getUserAgencyId(session.user.id);
+    
+    // Debug: Log para verificar el agencyId obtenido
+    console.log('[DEBUG updateTrip] AgencyId obtenido:', agencyId.toString());
+    console.log('[DEBUG updateTrip] UserId:', session.user.id);
+    
+    // Subir imágenes a S3 si hay archivos
+    let uploadedImageUrls: string[] = [];
+    if (files && files.length > 0) {
+      uploadedImageUrls = await this.s3Service.uploadMultipleImages(files, 'trips');
+    }
+
+    // Si hay imágenes subidas, reemplazar las URLs en galleryImages
+    if (uploadedImageUrls.length > 0 && dto.galleryImages) {
+      // Combinar imágenes subidas con las que ya vienen en el DTO (si hay)
+      const combinedImages = uploadedImageUrls.map((url, index) => ({
+        imageUrl: url,
+        order: dto.galleryImages?.[index]?.order ?? index,
+      }));
+      
+      // Si había más imágenes en el DTO, mantenerlas
+      const existingImages = (dto.galleryImages || []).slice(uploadedImageUrls.length);
+      dto.galleryImages = [...combinedImages, ...existingImages];
+    } else if (uploadedImageUrls.length > 0) {
+      // Si no había galleryImages en el DTO, crear el array con las subidas
+      dto.galleryImages = uploadedImageUrls.map((url, index) => ({
+        imageUrl: url,
+        order: index,
+      }));
+    }
     
     const trip = await this.updateTripUseCase.execute(
       agencyId,
@@ -261,6 +341,58 @@ export class AgencyController {
 
     return {
       message: 'Trip eliminado exitosamente',
+    };
+  }
+
+  /**
+   * Cambia el estado de un trip (DRAFT, PUBLISHED, ARCHIVED)
+   * La agencia se obtiene automáticamente de la sesión del usuario
+   */
+  @Put('trips/:tripId/status')
+  async changeTripStatus(
+    @Param('tripId') tripId: string,
+    @Body() dto: ChangeTripStatusDto,
+    @Session() session: UserSession,
+  ) {
+    // Obtener la agencia del usuario desde la sesión
+    const agencyId = await this.getUserAgencyId(session.user.id);
+    
+    const trip = await this.changeTripStatusUseCase.execute(
+      agencyId,
+      BigInt(tripId),
+      dto.status,
+      session.user.id,
+    );
+
+    return {
+      message: `Estado del trip cambiado a ${dto.status}`,
+      data: trip,
+    };
+  }
+
+  /**
+   * Activa o desactiva un trip
+   * La agencia se obtiene automáticamente de la sesión del usuario
+   */
+  @Put('trips/:tripId/active')
+  async toggleTripActive(
+    @Param('tripId') tripId: string,
+    @Body() dto: ToggleTripActiveDto,
+    @Session() session: UserSession,
+  ) {
+    // Obtener la agencia del usuario desde la sesión
+    const agencyId = await this.getUserAgencyId(session.user.id);
+    
+    const trip = await this.toggleTripActiveUseCase.execute(
+      agencyId,
+      BigInt(tripId),
+      dto.isActive,
+      session.user.id,
+    );
+
+    return {
+      message: `Trip ${dto.isActive ? 'activado' : 'desactivado'} exitosamente`,
+      data: trip,
     };
   }
 

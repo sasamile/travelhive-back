@@ -252,6 +252,15 @@ export class TripRepository implements ITripRepository {
     return trip ? this.mapToEntity(trip) : null;
   }
 
+  async hasBookings(tripId: bigint): Promise<boolean> {
+    const bookingCount = await this.prisma.booking.count({
+      where: {
+        idTrip: tripId,
+      },
+    });
+    return bookingCount > 0;
+  }
+
   private mapToEntity(prismaTrip: any): Trip {
     return new Trip({
       idTrip: prismaTrip.idTrip,

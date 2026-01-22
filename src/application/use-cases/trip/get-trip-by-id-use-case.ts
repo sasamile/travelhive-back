@@ -1,10 +1,11 @@
-import { Injectable, Inject, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Inject, ForbiddenException, NotFoundException } from '@nestjs/common';
 import type { ITripRepository } from '../../../domain/ports/trip.repository.port';
 import type { IAgencyMemberRepository } from '../../../domain/ports/agency.repository.port';
 import { TRIP_REPOSITORY, AGENCY_MEMBER_REPOSITORY } from '../../../domain/ports/tokens';
+import { Trip } from '../../../domain/entities/trip.entity';
 
 @Injectable()
-export class DeleteTripUseCase {
+export class GetTripByIdUseCase {
   constructor(
     @Inject(TRIP_REPOSITORY)
     private readonly tripRepository: ITripRepository,
@@ -12,7 +13,11 @@ export class DeleteTripUseCase {
     private readonly agencyMemberRepository: IAgencyMemberRepository,
   ) {}
 
-  async execute(agencyId: bigint, tripId: bigint, userId: string): Promise<void> {
+  async execute(
+    agencyId: bigint,
+    tripId: bigint,
+    userId: string,
+  ): Promise<Trip> {
     // Verificar que el trip exista y pertenezca a la agencia
     const trip = await this.tripRepository.findByAgencyAndId(agencyId, tripId);
     if (!trip) {
@@ -22,20 +27,9 @@ export class DeleteTripUseCase {
     // Verificar que el usuario pertenezca a la agencia
     const membership = await this.agencyMemberRepository.findByAgencyAndUser(agencyId, userId);
     if (!membership) {
-      throw new ForbiddenException('No tienes permiso para eliminar trips de esta agencia');
+      throw new ForbiddenException('No tienes permiso para ver trips de esta agencia');
     }
 
-    // Solo administradores pueden eliminar trips
-    if (membership.role !== 'admin') {
-      throw new ForbiddenException('Solo administradores pueden eliminar trips');
-    }
-
-    // Verificar que no haya compras relacionadas con este trip
-    const hasBookings = await this.tripRepository.hasBookings(tripId);
-    if (hasBookings) {
-      throw new BadRequestException('No se puede eliminar el trip porque tiene compras relacionadas');
-    }
-
-    await this.tripRepository.delete(tripId);
+    return trip;
   }
 }

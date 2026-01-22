@@ -7,4 +7,5 @@ export interface ITripRepository {
   update(id: bigint, data: Partial<Trip>): Promise<Trip>;
   delete(id: bigint): Promise<void>;
   findByAgencyAndId(agencyId: bigint, tripId: bigint): Promise<Trip | null>;
+  hasBookings(tripId: bigint): Promise<boolean>;
 }
