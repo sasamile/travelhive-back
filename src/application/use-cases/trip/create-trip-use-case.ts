@@ -31,9 +31,7 @@ export class CreateTripUseCase {
       userId,
     );
     if (!membership) {
-      // Para debugging: verificar si el usuario tiene alguna agencia
       const userAgencies = await this.agencyMemberRepository.findUserAgencies(userId);
-      console.log('[DEBUG CreateTripUseCase] Agencias del usuario:', userAgencies.map(a => a.idAgency.toString()));
       throw new ForbiddenException(
         `No tienes permiso para crear trips en esta agencia. ` +
         `AgencyId recibido: ${data.idAgency}, UserId: ${userId}. ` +
@@ -55,8 +53,6 @@ export class CreateTripUseCase {
     });
     
     if (!city) {
-      console.log('[DEBUG CreateTripUseCase] CityId recibido:', data.idCity);
-      console.log('[DEBUG CreateTripUseCase] CityId como BigInt:', cityIdBigInt.toString());
       throw new NotFoundException(`La ciudad con ID ${data.idCity} no existe`);
     }
 

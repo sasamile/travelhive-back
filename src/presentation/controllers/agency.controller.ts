@@ -75,20 +75,9 @@ export class AgencyController {
       throw new NotFoundException('No se encontró ninguna agencia asociada a tu usuario');
     }
 
-    // Debug: Log de todas las agencias encontradas
-    console.log('[DEBUG getUserAgencyId] Agencias encontradas para usuario:', userId);
-    agencyMembers.forEach((member, index) => {
-      console.log(`[DEBUG getUserAgencyId] Agencia ${index + 1}:`, {
-        idAgency: member.idAgency.toString(),
-        role: member.role,
-        approvalStatus: member.agency.approvalStatus,
-      });
-    });
-
     // Si solo hay una agencia, retornarla directamente
     if (agencyMembers.length === 1) {
       const selectedAgency = agencyMembers[0].idAgency;
-      console.log('[DEBUG getUserAgencyId] Retornando única agencia:', selectedAgency.toString());
       return selectedAgency;
     }
 
@@ -108,7 +97,6 @@ export class AgencyController {
 
     // Retornar la primera (priorizando aprobadas)
     const selectedAgency = sortedAgencies[0].idAgency;
-    console.log('[DEBUG getUserAgencyId] Retornando agencia seleccionada (múltiples):', selectedAgency.toString());
     return selectedAgency;
   }
 
@@ -160,10 +148,6 @@ export class AgencyController {
     // Obtener la agencia del usuario desde la sesión
     // Este método ya garantiza que la agencia pertenece al usuario
     const agencyId = await this.getUserAgencyId(session.user.id);
-    
-    // Debug: Log para verificar el agencyId obtenido
-    console.log('[DEBUG createTrip] AgencyId obtenido:', agencyId.toString());
-    console.log('[DEBUG createTrip] UserId:', session.user.id);
     
     // Subir imágenes a S3 si hay archivos
     let uploadedImageUrls: string[] = [];
@@ -277,10 +261,6 @@ export class AgencyController {
   ) {
     // Obtener la agencia del usuario desde la sesión
     const agencyId = await this.getUserAgencyId(session.user.id);
-    
-    // Debug: Log para verificar el agencyId obtenido
-    console.log('[DEBUG updateTrip] AgencyId obtenido:', agencyId.toString());
-    console.log('[DEBUG updateTrip] UserId:', session.user.id);
     
     // Subir imágenes a S3 si hay archivos
     let uploadedImageUrls: string[] = [];
