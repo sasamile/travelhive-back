@@ -4,12 +4,14 @@ import { UserRepository } from './repositories/user.repository';
 import { AgencyRepository, AgencyMemberRepository } from './repositories/agency.repository';
 import { TripRepository } from './repositories/trip.repository';
 import { ExpeditionRepository } from './repositories/expedition.repository';
+import { BookingRepository } from './repositories/booking.repository';
 import {
   USER_REPOSITORY,
   AGENCY_REPOSITORY,
   AGENCY_MEMBER_REPOSITORY,
   TRIP_REPOSITORY,
   EXPEDITION_REPOSITORY,
+  BOOKING_REPOSITORY,
 } from '../domain/ports/tokens';
 
 @Module({
@@ -35,6 +37,10 @@ import {
       provide: EXPEDITION_REPOSITORY,
       useClass: ExpeditionRepository,
     },
+    {
+      provide: BOOKING_REPOSITORY,
+      useClass: BookingRepository,
+    },
   ],
   exports: [
     USER_REPOSITORY,
@@ -42,6 +48,7 @@ import {
     AGENCY_MEMBER_REPOSITORY,
     TRIP_REPOSITORY,
     EXPEDITION_REPOSITORY,
+    BOOKING_REPOSITORY,
   ],
 })
 export class InfrastructureModule {}

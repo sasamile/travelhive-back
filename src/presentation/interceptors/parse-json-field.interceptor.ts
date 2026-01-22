@@ -5,7 +5,6 @@ import {
   CallHandler,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
-import { map } from 'rxjs/operators';
 
 /**
  * Interceptor para parsear campos JSON en multipart/form-data
@@ -18,12 +17,30 @@ export class ParseJsonFieldInterceptor implements NestInterceptor {
 
     // Si hay body y es un objeto (multipart/form-data)
     if (request.body && typeof request.body === 'object') {
+      // Caso especial: si viene un campo "data" con JSON, lo aplicamos sobre el body
+      // para que el ValidationPipe (whitelist + forbidNonWhitelisted) no rechace la key "data".
+      if (typeof request.body.data === 'string') {
+        try {
+          const parsed = JSON.parse(request.body.data);
+          if (parsed && typeof parsed === 'object') {
+            // Merge: los campos explícitos en form-data (fuera de data) tienen prioridad
+            request.body = { ...parsed, ...request.body };
+            // IMPORTANT: eliminar 'data' para que el ValidationPipe no lo rechace
+            delete request.body.data;
+          }
+        } catch {
+          // si no es JSON válido, se deja como está y luego fallará validación si aplica
+        }
+      }
+
       // Campos que pueden contener JSON como string
       const jsonFields = [
         'routePoints',
         'galleryImages',
         'itinerary',
-        'data', // Si viene todo el DTO en un campo 'data'
+        'data',
+        'user',
+        'agency',
       ];
 
       jsonFields.forEach((field) => {

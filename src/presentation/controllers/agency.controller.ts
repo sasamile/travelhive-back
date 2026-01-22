@@ -10,13 +10,12 @@ import {
   Query,
   HttpCode,
   HttpStatus,
-  UseGuards,
   UseInterceptors,
   UploadedFiles,
-  ForbiddenException,
+  UploadedFile,
   NotFoundException,
 } from '@nestjs/common';
-import { FilesInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ParseJsonFieldInterceptor } from '../interceptors/parse-json-field.interceptor';
 import { Session, AllowAnonymous } from '@thallesp/nestjs-better-auth';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
@@ -40,6 +39,11 @@ import { CreateExpeditionDto } from '../dto/create-expedition.dto';
 import { ListExpeditionsDto } from '../dto/list-expeditions.dto';
 import { S3Service } from '../../config/storage/s3.service';
 import { PrismaService } from '../../infrastructure/database/prisma/prisma.service';
+import { UpdateAgencyUseCase } from '../../application/use-cases/agency/update-agency-use-case';
+import { CreateBookingUseCase } from '../../application/use-cases/booking/create-booking-use-case';
+import { ListMyBookingsUseCase } from '../../application/use-cases/booking/list-my-bookings-use-case';
+import { UpdateAgencyDto } from '../dto/update-agency.dto';
+import { CreateBookingDto } from '../dto/create-booking.dto';
 
 @Controller('agencies')
 export class AgencyController {
@@ -57,6 +61,9 @@ export class AgencyController {
     private readonly listExpeditionsUseCase: ListExpeditionsUseCase,
     private readonly listAgencyExpeditionsUseCase: ListAgencyExpeditionsUseCase,
     private readonly prisma: PrismaService,
+    private readonly updateAgencyUseCase: UpdateAgencyUseCase,
+    private readonly createBookingUseCase: CreateBookingUseCase,
+    private readonly listMyBookingsUseCase: ListMyBookingsUseCase,
   ) {}
 
   /**
@@ -146,9 +153,9 @@ export class AgencyController {
     @Session() session: UserSession,
   ) {
     // Obtener la agencia del usuario desde la sesión
-    // Este método ya garantiza que la agencia pertenece al usuario
+    // Este metodo ya garantiza que la agencia pertenece al usuario
     const agencyId = await this.getUserAgencyId(session.user.id);
-    
+
     // Subir imágenes a S3 si hay archivos
     let uploadedImageUrls: string[] = [];
     if (files && files.length > 0) {
@@ -205,7 +212,7 @@ export class AgencyController {
     // Obtener la agencia del usuario desde la sesión
     const agencyId = await this.getUserAgencyId(session.user.id);
     
-    const result = await this.listAgencyExpeditionsUseCase.execute(
+    return await this.listAgencyExpeditionsUseCase.execute(
       agencyId,
       session.user.id,
       {
@@ -216,8 +223,6 @@ export class AgencyController {
         limit: query.limit,
       },
     );
-
-    return result;
   }
 
   /**
@@ -261,7 +266,7 @@ export class AgencyController {
   ) {
     // Obtener la agencia del usuario desde la sesión
     const agencyId = await this.getUserAgencyId(session.user.id);
-    
+
     // Subir imágenes a S3 si hay archivos
     let uploadedImageUrls: string[] = [];
     if (files && files.length > 0) {
@@ -423,5 +428,67 @@ export class AgencyController {
     return {
       data: expeditions,
     };
+  }
+
+  /**
+   * Actualiza la información de la agencia del usuario autenticado.
+   * Permisos: roles admin/editor dentro de la agencia.
+   */
+  @Patch('me')
+  @UseInterceptors(
+    FileInterceptor('picture'),
+    ParseJsonFieldInterceptor,
+  )
+  async updateMyAgency(
+    @Session() session: UserSession,
+    @Body() dto: UpdateAgencyDto,
+    @UploadedFile() pictureFile?: any,
+  ) {
+    const agencyId = await this.getUserAgencyId(session.user.id);
+
+    let pictureUrl = dto.picture;
+    if (pictureFile) {
+      pictureUrl = await this.s3Service.uploadImage(pictureFile, 'agencies');
+    }
+
+    const updated = await this.updateAgencyUseCase.execute({
+      agencyId,
+      userId: session.user.id,
+      nameAgency: dto.nameAgency,
+      email: dto.email,
+      phone: dto.phone,
+      nit: dto.nit,
+      rntNumber: dto.rntNumber,
+      picture: pictureUrl,
+    });
+
+    return { message: 'Agencia actualizada', data: updated };
+  }
+
+  /**
+   * Compra/reserva cupos en una expedición (usuario normal).
+   * Crea un Booking y descuenta cupos con transacción.
+   */
+  @Post('bookings')
+  @HttpCode(HttpStatus.CREATED)
+  async createBooking(@Session() session: UserSession, @Body() dto: CreateBookingDto) {
+    const booking = await this.createBookingUseCase.execute({
+      userId: session.user.id,
+      idTrip: BigInt(dto.idTrip),
+      idExpedition: BigInt(dto.idExpedition),
+      adults: dto.adults,
+      children: dto.children,
+      discountCode: dto.discountCode,
+    });
+
+    return { message: 'Compra realizada', data: booking };
+  }
+
+  /**
+   * Lista las compras del usuario autenticado.
+   */
+  @Get('bookings')
+  async listMyBookings(@Session() session: UserSession) {
+    return await this.listMyBookingsUseCase.execute(session.user.id);
   }
 }

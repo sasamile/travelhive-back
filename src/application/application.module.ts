@@ -13,6 +13,10 @@ import { ToggleTripActiveUseCase } from './use-cases/trip/toggle-trip-active-use
 import { CreateExpeditionUseCase } from './use-cases/expedition/create-expedition-use-case';
 import { ListExpeditionsUseCase } from './use-cases/expedition/list-expeditions-use-case';
 import { ListAgencyExpeditionsUseCase } from './use-cases/expedition/list-agency-expeditions-use-case';
+import { UpdateUserProfileUseCase } from './use-cases/user/update-user-profile-use-case';
+import { UpdateAgencyUseCase } from './use-cases/agency/update-agency-use-case';
+import { CreateBookingUseCase } from './use-cases/booking/create-booking-use-case';
+import { ListMyBookingsUseCase } from './use-cases/booking/list-my-bookings-use-case';
 import { InfrastructureModule } from '../infrastructure/infrastructure.module';
 
 @Module({
@@ -32,6 +36,10 @@ import { InfrastructureModule } from '../infrastructure/infrastructure.module';
     CreateExpeditionUseCase,
     ListExpeditionsUseCase,
     ListAgencyExpeditionsUseCase,
+    UpdateUserProfileUseCase,
+    UpdateAgencyUseCase,
+    CreateBookingUseCase,
+    ListMyBookingsUseCase,
   ],
   exports: [
     RegisterAgencyUseCase,
@@ -48,6 +56,10 @@ import { InfrastructureModule } from '../infrastructure/infrastructure.module';
     CreateExpeditionUseCase,
     ListExpeditionsUseCase,
     ListAgencyExpeditionsUseCase,
+    UpdateUserProfileUseCase,
+    UpdateAgencyUseCase,
+    CreateBookingUseCase,
+    ListMyBookingsUseCase,
   ],
 })
 export class ApplicationModule {}
