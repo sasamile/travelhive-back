@@ -36,6 +36,29 @@ export class UserRepository implements IUserRepository {
     });
   }
 
+  async updatePassword(userId: string, hashedPassword: string): Promise<void> {
+    // Actualizar la contraseña en la tabla Account de Better Auth
+    await this.prisma.account.updateMany({
+      where: {
+        userId,
+        providerId: 'credential',
+      },
+      data: {
+        password: hashedPassword,
+      },
+    });
+  }
+
+  async hasAccount(userId: string): Promise<boolean> {
+    const account = await this.prisma.account.findFirst({
+      where: {
+        userId,
+        providerId: 'credential',
+      },
+    });
+    return !!account;
+  }
+
   async findByEmail(email: string): Promise<User | null> {
     const user = await this.prisma.user.findUnique({
       where: { email },

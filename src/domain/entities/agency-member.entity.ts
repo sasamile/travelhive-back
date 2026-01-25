@@ -3,6 +3,7 @@ export class AgencyMember {
   idAgency: bigint;
   idUser: string; // Cambiado a string para Better Auth
   role: string;
+  isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
 

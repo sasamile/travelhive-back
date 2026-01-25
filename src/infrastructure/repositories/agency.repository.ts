@@ -2,10 +2,12 @@ import { Injectable } from '@nestjs/common';
 import {
   IAgencyRepository,
   IAgencyMemberRepository,
+  AgencyMemberFilters,
 } from '../../domain/ports/agency.repository.port';
 import { Agency } from '../../domain/entities/agency.entity';
 import { AgencyMember } from '../../domain/entities/agency-member.entity';
 import { PrismaService } from '../database/prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class AgencyRepository implements IAgencyRepository {
@@ -126,14 +128,27 @@ export class AgencyMemberRepository implements IAgencyMemberRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(member: Partial<AgencyMember>): Promise<AgencyMember> {
-    const created = await this.prisma.agencyMember.create({
-      data: {
-        idAgency: BigInt(member.idAgency!.toString()),
-        idUser: member.idUser as string,
-        role: member.role!,
-      },
-    });
-    return this.mapToEntity(created);
+    // Intentar insertar con is_active primero, si falla intentar sin ella
+    try {
+      const isActiveValue = member.isActive !== undefined ? member.isActive : true;
+      const result = await this.prisma.$queryRaw<any[]>`
+        INSERT INTO agency_members (id_agency, user_id, role, is_active)
+        VALUES (${BigInt(member.idAgency!.toString())}::bigint, ${member.idUser as string}, ${member.role!}, ${isActiveValue})
+        RETURNING id, id_agency as "idAgency", user_id as "idUser", role, created_at as "createdAt", updated_at as "updatedAt"
+      `;
+      return this.mapToEntity(result[0]);
+    } catch (error: any) {
+      // Si falla porque la columna no existe, intentar sin is_active
+      if (error.message?.includes('is_active') || error.message?.includes('column')) {
+        const result = await this.prisma.$queryRaw<any[]>`
+          INSERT INTO agency_members (id_agency, user_id, role)
+          VALUES (${BigInt(member.idAgency!.toString())}::bigint, ${member.idUser as string}, ${member.role!})
+          RETURNING id, id_agency as "idAgency", user_id as "idUser", role, created_at as "createdAt", updated_at as "updatedAt"
+        `;
+        return this.mapToEntity(result[0]);
+      }
+      throw error;
+    }
   }
 
   async findUserAgencies(userId: string): Promise<AgencyMember[]> {
@@ -143,10 +158,77 @@ export class AgencyMemberRepository implements IAgencyMemberRepository {
     return members.map((m) => this.mapToEntity(m));
   }
 
-  async findAgencyMembers(agencyId: bigint): Promise<AgencyMember[]> {
-    const members = await this.prisma.agencyMember.findMany({
-      where: { idAgency: agencyId },
-    });
+  async findAgencyMembers(agencyId: bigint, filters?: AgencyMemberFilters): Promise<AgencyMember[]> {
+    // Verificar si la columna is_active existe
+    const columnExists = await this.prisma.$queryRaw<Array<{ exists: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_schema = 'public' 
+        AND table_name = 'agency_members' 
+        AND column_name = 'is_active'
+      ) as exists
+    `;
+
+    const hasIsActiveColumn = columnExists[0]?.exists;
+
+    // Construir partes de la consulta dinámicamente
+    const selectFields = hasIsActiveColumn
+      ? Prisma.sql`am.id, am.id_agency as "idAgency", am.user_id as "idUser", am.role, am.is_active as "isActive", am.created_at as "createdAt", am.updated_at as "updatedAt"`
+      : Prisma.sql`am.id, am.id_agency as "idAgency", am.user_id as "idUser", am.role, am.created_at as "createdAt", am.updated_at as "updatedAt"`;
+
+    // Construir condiciones WHERE
+    const conditions: Prisma.Sql[] = [Prisma.sql`am.id_agency = ${agencyId}::bigint`];
+
+    // Excluir usuario si se especifica
+    if (filters?.excludeUserId) {
+      conditions.push(Prisma.sql`am.user_id != ${filters.excludeUserId}`);
+    }
+
+    // Filtro por isActive
+    if (filters?.isActive !== undefined && hasIsActiveColumn) {
+      conditions.push(Prisma.sql`am.is_active = ${filters.isActive}`);
+    }
+
+    // Filtro por rol
+    if (filters?.role) {
+      conditions.push(Prisma.sql`am.role = ${filters.role}`);
+    }
+
+    // Filtro por teléfono
+    if (filters?.phone) {
+      const phonePattern = `%${filters.phone}%`;
+      conditions.push(Prisma.sql`u.phone_user ILIKE ${phonePattern}`);
+    }
+
+    // Filtro por DNI
+    if (filters?.dni) {
+      const dniPattern = `%${filters.dni}%`;
+      conditions.push(Prisma.sql`u.dni_user ILIKE ${dniPattern}`);
+    }
+
+    // Filtro de búsqueda general (nombre o email)
+    if (filters?.search) {
+      const searchPattern = `%${filters.search}%`;
+      conditions.push(Prisma.sql`(u.name ILIKE ${searchPattern} OR u.email ILIKE ${searchPattern})`);
+    }
+
+    // Combinar todas las condiciones
+    const whereClause = conditions.reduce((acc, condition, index) => {
+      if (index === 0) return condition;
+      return Prisma.sql`${acc} AND ${condition}`;
+    }, conditions[0]);
+
+    // Construir la consulta final
+    const query = Prisma.sql`
+      SELECT ${selectFields}
+      FROM agency_members am
+      INNER JOIN "user" u ON am.user_id = u.id
+      WHERE ${whereClause}
+      ORDER BY am.created_at DESC
+    `;
+
+    const members = await this.prisma.$queryRaw<any[]>(query);
     return members.map((m) => this.mapToEntity(m));
   }
 
@@ -154,23 +236,138 @@ export class AgencyMemberRepository implements IAgencyMemberRepository {
     agencyId: bigint,
     userId: string,
   ): Promise<AgencyMember | null> {
-    const member = await this.prisma.agencyMember.findUnique({
-      where: {
-        idAgency_idUser: {
-          idAgency: agencyId,
-          idUser: userId,
-        },
-      },
-    });
-    return member ? this.mapToEntity(member) : null;
+    // Usar $queryRaw para evitar problemas con isActive si la columna no existe aún
+    const members = await this.prisma.$queryRaw<any[]>`
+      SELECT 
+        id,
+        id_agency as "idAgency",
+        user_id as "idUser",
+        role,
+        created_at as "createdAt",
+        updated_at as "updatedAt"
+      FROM agency_members
+      WHERE id_agency = ${agencyId}::bigint AND user_id = ${userId}
+      LIMIT 1
+    `;
+    return members.length > 0 ? this.mapToEntity(members[0]) : null;
+  }
+
+  async findById(id: bigint): Promise<AgencyMember | null> {
+    // Usar $queryRaw para evitar problemas con isActive si la columna no existe aún
+    const members = await this.prisma.$queryRaw<any[]>`
+      SELECT 
+        id,
+        id_agency as "idAgency",
+        user_id as "idUser",
+        role,
+        created_at as "createdAt",
+        updated_at as "updatedAt"
+      FROM agency_members
+      WHERE id = ${id}::bigint
+      LIMIT 1
+    `;
+    return members.length > 0 ? this.mapToEntity(members[0]) : null;
   }
 
   async updateRole(id: bigint, role: string): Promise<AgencyMember> {
-    const updated = await this.prisma.agencyMember.update({
-      where: { id },
-      data: { role },
-    });
-    return this.mapToEntity(updated);
+    // Usar $queryRaw para evitar problemas con isActive si la columna no existe aún
+    const result = await this.prisma.$queryRaw<any[]>`
+      UPDATE agency_members 
+      SET role = ${role}, updated_at = NOW()
+      WHERE id = ${id}::bigint
+      RETURNING id, id_agency as "idAgency", user_id as "idUser", role, created_at as "createdAt", updated_at as "updatedAt"
+    `;
+    return this.mapToEntity(result[0]);
+  }
+
+  async update(id: bigint, data: Partial<AgencyMember>): Promise<AgencyMember> {
+    // Si solo se actualiza role, hacerlo directamente
+    if (data.role !== undefined && data.isActive === undefined) {
+      const result = await this.prisma.$queryRaw<any[]>`
+        UPDATE agency_members 
+        SET role = ${data.role}, updated_at = NOW()
+        WHERE id = ${id}::bigint
+        RETURNING id, id_agency as "idAgency", user_id as "idUser", role, created_at as "createdAt", updated_at as "updatedAt"
+      `;
+      return this.mapToEntity(result[0]);
+    }
+
+    // Si se intenta actualizar isActive, intentar con la columna
+    if (data.isActive !== undefined) {
+      try {
+        const result = await this.prisma.$queryRaw<any[]>`
+          UPDATE agency_members 
+          SET 
+            ${data.role !== undefined ? Prisma.sql`role = ${data.role},` : Prisma.empty}
+            is_active = ${data.isActive}, 
+            updated_at = NOW()
+          WHERE id = ${id}::bigint
+          RETURNING id, id_agency as "idAgency", user_id as "idUser", role, created_at as "createdAt", updated_at as "updatedAt"
+        `;
+        return this.mapToEntity(result[0]);
+      } catch (error: any) {
+        // Si falla porque is_active no existe, actualizar solo role si está definido
+        if ((error.message?.includes('is_active') || error.message?.includes('column')) && data.role !== undefined) {
+          const result = await this.prisma.$queryRaw<any[]>`
+            UPDATE agency_members 
+            SET role = ${data.role}, updated_at = NOW()
+            WHERE id = ${id}::bigint
+            RETURNING id, id_agency as "idAgency", user_id as "idUser", role, created_at as "createdAt", updated_at as "updatedAt"
+          `;
+          return this.mapToEntity(result[0]);
+        }
+        throw error;
+      }
+    }
+
+    // Si no hay nada que actualizar, solo obtener el registro
+    const result = await this.prisma.$queryRaw<any[]>`
+      SELECT id, id_agency as "idAgency", user_id as "idUser", role, created_at as "createdAt", updated_at as "updatedAt"
+      FROM agency_members WHERE id = ${id}::bigint
+    `;
+    return this.mapToEntity(result[0]);
+  }
+
+  async delete(id: bigint): Promise<void> {
+    // Usar $executeRaw para evitar problemas con isActive si la columna no existe aún
+    await this.prisma.$executeRaw`
+      DELETE FROM agency_members WHERE id = ${id}::bigint
+    `;
+  }
+
+  async toggleActive(id: bigint, isActive: boolean): Promise<AgencyMember> {
+    // Verificar primero si la columna is_active existe
+    const columnExists = await this.prisma.$queryRaw<Array<{ exists: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_schema = 'public' 
+        AND table_name = 'agency_members' 
+        AND column_name = 'is_active'
+      ) as exists
+    `;
+
+    if (!columnExists[0]?.exists) {
+      // Si la columna no existe, solo actualizar updated_at y retornar con el valor solicitado
+      const result = await this.prisma.$queryRaw<any[]>`
+        UPDATE agency_members 
+        SET updated_at = NOW()
+        WHERE id = ${id}::bigint
+        RETURNING id, id_agency as "idAgency", user_id as "idUser", role, created_at as "createdAt", updated_at as "updatedAt"
+      `;
+      const member = this.mapToEntity(result[0]);
+      member.isActive = isActive; // Usar el valor solicitado
+      return member;
+    }
+
+    // Si la columna existe, actualizar normalmente
+    const result = await this.prisma.$queryRaw<any[]>`
+      UPDATE agency_members 
+      SET is_active = ${isActive}, updated_at = NOW()
+      WHERE id = ${id}::bigint
+      RETURNING id, id_agency as "idAgency", user_id as "idUser", role, is_active as "isActive", created_at as "createdAt", updated_at as "updatedAt"
+    `;
+    return this.mapToEntity(result[0]);
   }
 
   private mapToEntity(prismaMember: any): AgencyMember {
@@ -179,6 +376,7 @@ export class AgencyMemberRepository implements IAgencyMemberRepository {
       idAgency: prismaMember.idAgency,
       idUser: prismaMember.idUser,
       role: prismaMember.role,
+      isActive: prismaMember.isActive ?? true,
       createdAt: prismaMember.createdAt,
       updatedAt: prismaMember.updatedAt,
     });

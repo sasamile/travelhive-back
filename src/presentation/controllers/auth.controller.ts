@@ -19,32 +19,53 @@ export class AuthController {
   @Get('me')
   async getProfile(@Session() session: UserSession) {
     // Obtener las agencias del usuario con información completa
-    const agencyMembers = await this.prisma.agencyMember.findMany({
-      where: { idUser: session.user.id },
-      include: {
-        agency: true,
-      },
-    });
+    // Usar $queryRaw para evitar problemas con isActive si la columna no existe aún
+    const agencyMembers = await this.prisma.$queryRaw<any[]>`
+      SELECT 
+        am.id,
+        am.id_agency as "idAgency",
+        am.user_id as "idUser",
+        am.role,
+        am.created_at as "createdAt",
+        am.updated_at as "updatedAt",
+        a.id_agency as "agency_idAgency",
+        a.name_agency as "agency_nameAgency",
+        a.email as "agency_email",
+        a.phone as "agency_phone",
+        a.nit as "agency_nit",
+        a.rnt_number as "agency_rntNumber",
+        a.picture as "agency_picture",
+        a.status as "agency_status",
+        a.approval_status as "agency_approvalStatus",
+        a.rejection_reason as "agency_rejectionReason",
+        a.reviewed_by as "agency_reviewedBy",
+        a.reviewed_at as "agency_reviewedAt",
+        a.created_at as "agency_createdAt",
+        a.updated_at as "agency_updatedAt"
+      FROM agency_members am
+      INNER JOIN agencies a ON am.id_agency = a.id_agency
+      WHERE am.user_id = ${session.user.id}
+    `;
 
     // Formatear la información de agencias
-    const agencies = agencyMembers.map((member) => ({
+    const agencies = agencyMembers.map((member: any) => ({
       idAgency: member.idAgency.toString(),
       role: member.role,
       agency: {
-        idAgency: member.agency.idAgency.toString(),
-        nameAgency: member.agency.nameAgency,
-        email: member.agency.email,
-        phone: member.agency.phone,
-        nit: member.agency.nit,
-        rntNumber: member.agency.rntNumber,
-        picture: member.agency.picture,
-        status: member.agency.status,
-        approvalStatus: member.agency.approvalStatus,
-        rejectionReason: member.agency.rejectionReason,
-        reviewedBy: member.agency.reviewedBy,
-        reviewedAt: member.agency.reviewedAt,
-        createdAt: member.agency.createdAt,
-        updatedAt: member.agency.updatedAt,
+        idAgency: member.agency_idAgency.toString(),
+        nameAgency: member.agency_nameAgency,
+        email: member.agency_email,
+        phone: member.agency_phone,
+        nit: member.agency_nit,
+        rntNumber: member.agency_rntNumber,
+        picture: member.agency_picture,
+        status: member.agency_status,
+        approvalStatus: member.agency_approvalStatus,
+        rejectionReason: member.agency_rejectionReason,
+        reviewedBy: member.agency_reviewedBy,
+        reviewedAt: member.agency_reviewedAt,
+        createdAt: member.agency_createdAt,
+        updatedAt: member.agency_updatedAt,
       },
     }));
 

@@ -6,6 +6,15 @@ import * as bcrypt from 'bcryptjs';
 
 // Función para crear la instancia de auth desde PrismaService de NestJS
 export const createAuthInstance = (prisma: PrismaClient) => {
+  // Validar que las credenciales de Google estén configuradas
+  const googleClientId = process.env.GOOGLE_CLIENT_ID;
+  const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  
+  if (!googleClientId || !googleClientSecret) {
+    console.warn('⚠️  Google OAuth credentials not found. Google sign-in will be disabled.');
+    console.warn('   Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in your .env file');
+  }
+
   return betterAuth({
     database: prismaAdapter(prisma, {
       provider: 'postgresql',
@@ -22,6 +31,15 @@ export const createAuthInstance = (prisma: PrismaClient) => {
         },
       },
     },
+    socialProviders: googleClientId && googleClientSecret ? {
+      google: {
+        clientId: googleClientId,
+        clientSecret: googleClientSecret,
+        scope: ['email', 'profile'],
+        // Opcional: forzar selección de cuenta cada vez
+        // prompt: 'select_account',
+      },
+    } : undefined,
     baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3000',
     secret: process.env.BETTER_AUTH_SECRET || process.env.JWT_SECRET || 'your-secret-key-change-in-production',
     advanced: {
@@ -56,10 +74,14 @@ export const createAuthInstance = (prisma: PrismaClient) => {
       }),
       after: createAuthMiddleware(async (ctx) => {
         // Agregar información de agencias a la respuesta del login
-        if (ctx.path === '/sign-in/email' && ctx.context.newSession) {
+        // Maneja tanto login con email como login con Google (viajeros)
+        const isSignInPath = ctx.path === '/sign-in/email' || ctx.path === '/callback/google';
+        
+        if (isSignInPath && ctx.context.newSession) {
           const userId = ctx.context.newSession.user.id;
           
-          // Obtener las agencias del usuario
+          // Obtener las agencias del usuario (si tiene alguna)
+          // Los viajeros pueden no tener agencias, así que esto puede retornar un array vacío
           const agencyMembers = await prisma.agencyMember.findMany({
             where: { idUser: userId },
             include: { agency: true },
@@ -87,7 +109,7 @@ export const createAuthInstance = (prisma: PrismaClient) => {
             },
           }));
 
-          // Modificar la respuesta para incluir las agencias
+          // Modificar la respuesta para incluir las agencias (puede ser array vacío para viajeros)
           const returned = ctx.context.returned as any;
           if (returned) {
             // Verificar si la respuesta tiene estructura { data: { user, ... } } o { user, ... }

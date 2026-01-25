@@ -15,6 +15,14 @@ import { ListExpeditionsUseCase } from './use-cases/expedition/list-expeditions-
 import { ListAgencyExpeditionsUseCase } from './use-cases/expedition/list-agency-expeditions-use-case';
 import { UpdateUserProfileUseCase } from './use-cases/user/update-user-profile-use-case';
 import { UpdateAgencyUseCase } from './use-cases/agency/update-agency-use-case';
+import { CreateAgencyMemberUseCase } from './use-cases/agency/create-agency-member-use-case';
+import { UpdateAgencyMemberUseCase } from './use-cases/agency/update-agency-member-use-case';
+import { DeleteAgencyMemberUseCase } from './use-cases/agency/delete-agency-member-use-case';
+import { ToggleAgencyMemberActiveUseCase } from './use-cases/agency/toggle-agency-member-active-use-case';
+import { ActivateAgencyMemberUseCase } from './use-cases/agency/activate-agency-member-use-case';
+import { DeactivateAgencyMemberUseCase } from './use-cases/agency/deactivate-agency-member-use-case';
+import { ChangeAgencyMemberPasswordUseCase } from './use-cases/agency/change-agency-member-password-use-case';
+import { ListAgencyMembersUseCase } from './use-cases/agency/list-agency-members-use-case';
 import { CreateBookingUseCase } from './use-cases/booking/create-booking-use-case';
 import { ListMyBookingsUseCase } from './use-cases/booking/list-my-bookings-use-case';
 import { InfrastructureModule } from '../infrastructure/infrastructure.module';
@@ -38,6 +46,14 @@ import { InfrastructureModule } from '../infrastructure/infrastructure.module';
     ListAgencyExpeditionsUseCase,
     UpdateUserProfileUseCase,
     UpdateAgencyUseCase,
+    CreateAgencyMemberUseCase,
+    UpdateAgencyMemberUseCase,
+    DeleteAgencyMemberUseCase,
+    ToggleAgencyMemberActiveUseCase,
+    ActivateAgencyMemberUseCase,
+    DeactivateAgencyMemberUseCase,
+    ChangeAgencyMemberPasswordUseCase,
+    ListAgencyMembersUseCase,
     CreateBookingUseCase,
     ListMyBookingsUseCase,
   ],
@@ -58,6 +74,14 @@ import { InfrastructureModule } from '../infrastructure/infrastructure.module';
     ListAgencyExpeditionsUseCase,
     UpdateUserProfileUseCase,
     UpdateAgencyUseCase,
+    CreateAgencyMemberUseCase,
+    UpdateAgencyMemberUseCase,
+    DeleteAgencyMemberUseCase,
+    ToggleAgencyMemberActiveUseCase,
+    ActivateAgencyMemberUseCase,
+    DeactivateAgencyMemberUseCase,
+    ChangeAgencyMemberPasswordUseCase,
+    ListAgencyMembersUseCase,
     CreateBookingUseCase,
     ListMyBookingsUseCase,
   ],

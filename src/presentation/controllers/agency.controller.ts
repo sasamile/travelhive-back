@@ -40,10 +40,22 @@ import { ListExpeditionsDto } from '../dto/list-expeditions.dto';
 import { S3Service } from '../../config/storage/s3.service';
 import { PrismaService } from '../../infrastructure/database/prisma/prisma.service';
 import { UpdateAgencyUseCase } from '../../application/use-cases/agency/update-agency-use-case';
+import { CreateAgencyMemberUseCase } from '../../application/use-cases/agency/create-agency-member-use-case';
+import { UpdateAgencyMemberUseCase } from '../../application/use-cases/agency/update-agency-member-use-case';
+import { DeleteAgencyMemberUseCase } from '../../application/use-cases/agency/delete-agency-member-use-case';
+import { ToggleAgencyMemberActiveUseCase } from '../../application/use-cases/agency/toggle-agency-member-active-use-case';
+import { ActivateAgencyMemberUseCase } from '../../application/use-cases/agency/activate-agency-member-use-case';
+import { DeactivateAgencyMemberUseCase } from '../../application/use-cases/agency/deactivate-agency-member-use-case';
+import { ChangeAgencyMemberPasswordUseCase } from '../../application/use-cases/agency/change-agency-member-password-use-case';
+import { ListAgencyMembersUseCase } from '../../application/use-cases/agency/list-agency-members-use-case';
 import { CreateBookingUseCase } from '../../application/use-cases/booking/create-booking-use-case';
 import { ListMyBookingsUseCase } from '../../application/use-cases/booking/list-my-bookings-use-case';
 import { UpdateAgencyDto } from '../dto/update-agency.dto';
 import { CreateBookingDto } from '../dto/create-booking.dto';
+import { CreateAgencyMemberDto } from '../dto/create-agency-member.dto';
+import { UpdateAgencyMemberDto } from '../dto/update-agency-member.dto';
+import { ChangeMemberPasswordDto } from '../dto/change-member-password.dto';
+import { ListAgencyMembersDto } from '../dto/list-agency-members.dto';
 
 @Controller('agencies')
 export class AgencyController {
@@ -62,6 +74,14 @@ export class AgencyController {
     private readonly listAgencyExpeditionsUseCase: ListAgencyExpeditionsUseCase,
     private readonly prisma: PrismaService,
     private readonly updateAgencyUseCase: UpdateAgencyUseCase,
+    private readonly createAgencyMemberUseCase: CreateAgencyMemberUseCase,
+    private readonly updateAgencyMemberUseCase: UpdateAgencyMemberUseCase,
+    private readonly deleteAgencyMemberUseCase: DeleteAgencyMemberUseCase,
+    private readonly toggleAgencyMemberActiveUseCase: ToggleAgencyMemberActiveUseCase,
+    private readonly activateAgencyMemberUseCase: ActivateAgencyMemberUseCase,
+    private readonly deactivateAgencyMemberUseCase: DeactivateAgencyMemberUseCase,
+    private readonly changeAgencyMemberPasswordUseCase: ChangeAgencyMemberPasswordUseCase,
+    private readonly listAgencyMembersUseCase: ListAgencyMembersUseCase,
     private readonly createBookingUseCase: CreateBookingUseCase,
     private readonly listMyBookingsUseCase: ListMyBookingsUseCase,
   ) {}
@@ -72,11 +92,21 @@ export class AgencyController {
    * Usa exactamente la misma lógica que el hook de login
    */
   private async getUserAgencyId(userId: string): Promise<bigint> {
-    // Consulta exacta igual que el hook de login en auth.config.ts
-    const agencyMembers = await this.prisma.agencyMember.findMany({
-      where: { idUser: userId },
-      include: { agency: true },
-    });
+    // Consulta usando $queryRaw para evitar problemas con isActive si la columna no existe aún
+    const agencyMembers = await this.prisma.$queryRaw<any[]>`
+      SELECT 
+        am.id,
+        am.id_agency as "idAgency",
+        am.user_id as "idUser",
+        am.role,
+        am.created_at as "createdAt",
+        a.id_agency as "agency_idAgency",
+        a.approval_status as "agency_approvalStatus",
+        a.created_at as "agency_createdAt"
+      FROM agency_members am
+      INNER JOIN agencies a ON am.id_agency = a.id_agency
+      WHERE am.user_id = ${userId}
+    `;
 
     if (!agencyMembers || agencyMembers.length === 0) {
       throw new NotFoundException('No se encontró ninguna agencia asociada a tu usuario');
@@ -84,26 +114,26 @@ export class AgencyController {
 
     // Si solo hay una agencia, retornarla directamente
     if (agencyMembers.length === 1) {
-      const selectedAgency = agencyMembers[0].idAgency;
+      const selectedAgency = BigInt(agencyMembers[0].idAgency);
       return selectedAgency;
     }
 
     // Si hay múltiples, buscar la primera aprobada
     // Ordenar: aprobadas primero, luego por fecha de creación (más reciente primero)
-    const sortedAgencies = [...agencyMembers].sort((a, b) => {
+    const sortedAgencies = [...agencyMembers].sort((a: any, b: any) => {
       // Priorizar aprobadas
-      if (a.agency.approvalStatus === 'APPROVED' && b.agency.approvalStatus !== 'APPROVED') {
+      if (a.agency_approvalStatus === 'APPROVED' && b.agency_approvalStatus !== 'APPROVED') {
         return -1;
       }
-      if (b.agency.approvalStatus === 'APPROVED' && a.agency.approvalStatus !== 'APPROVED') {
+      if (b.agency_approvalStatus === 'APPROVED' && a.agency_approvalStatus !== 'APPROVED') {
         return 1;
       }
       // Si mismo estado, ordenar por fecha (más reciente primero)
-      return b.createdAt.getTime() - a.createdAt.getTime();
+      return new Date(b.agency_createdAt).getTime() - new Date(a.agency_createdAt).getTime();
     });
 
     // Retornar la primera (priorizando aprobadas)
-    const selectedAgency = sortedAgencies[0].idAgency;
+    const selectedAgency = BigInt(sortedAgencies[0].idAgency);
     return selectedAgency;
   }
 
@@ -490,5 +520,179 @@ export class AgencyController {
   @Get('bookings')
   async listMyBookings(@Session() session: UserSession) {
     return await this.listMyBookingsUseCase.execute(session.user.id);
+  }
+
+  /**
+   * Crea un nuevo miembro de la agencia con contraseña temporal
+   * Solo los administradores pueden crear miembros
+   */
+  @Post('members')
+  @HttpCode(HttpStatus.CREATED)
+  async createMember(
+    @Body() dto: CreateAgencyMemberDto,
+    @Session() session: UserSession,
+  ) {
+    const agencyId = await this.getUserAgencyId(session.user.id);
+
+    const result = await this.createAgencyMemberUseCase.execute({
+      agencyId,
+      userId: session.user.id,
+      email: dto.email,
+      name: dto.name,
+      role: dto.role,
+      dni: dto.dni,
+      phone: dto.phone,
+    });
+
+    return {
+      message: 'Miembro creado exitosamente',
+      data: result,
+    };
+  }
+
+  /**
+   * Lista todos los miembros de la agencia con filtros opcionales
+   * Solo los administradores pueden listar miembros
+   * Filtros disponibles: isActive, role, phone, dni, search
+   */
+  @Get('members')
+  async listMembers(
+    @Session() session: UserSession,
+    @Query() query: ListAgencyMembersDto,
+  ) {
+    const agencyId = await this.getUserAgencyId(session.user.id);
+
+    return await this.listAgencyMembersUseCase.execute({
+      agencyId,
+      userId: session.user.id,
+      filters: {
+        isActive: query.isActive,
+        role: query.role,
+        phone: query.phone,
+        dni: query.dni,
+        search: query.search,
+      },
+    });
+  }
+
+  /**
+   * Actualiza la información de un miembro de la agencia
+   * Solo los administradores pueden editar miembros
+   */
+  @Patch('members/:memberId')
+  async updateMember(
+    @Param('memberId') memberId: string,
+    @Body() dto: UpdateAgencyMemberDto,
+    @Session() session: UserSession,
+  ) {
+    const agencyId = await this.getUserAgencyId(session.user.id);
+
+    const result = await this.updateAgencyMemberUseCase.execute({
+      agencyId,
+      memberId: BigInt(memberId),
+      userId: session.user.id,
+      email: dto.email,
+      name: dto.name,
+      role: dto.role,
+      dni: dto.dni,
+      phone: dto.phone,
+    });
+
+    return {
+      message: 'Miembro actualizado exitosamente',
+      data: result,
+    };
+  }
+
+  /**
+   * Elimina un miembro de la agencia
+   * Solo los administradores pueden eliminar miembros
+   */
+  @Delete('members/:memberId')
+  @HttpCode(HttpStatus.OK)
+  async deleteMember(
+    @Param('memberId') memberId: string,
+    @Session() session: UserSession,
+  ) {
+    const agencyId = await this.getUserAgencyId(session.user.id);
+
+    return await this.deleteAgencyMemberUseCase.execute({
+      agencyId,
+      memberId: BigInt(memberId),
+      userId: session.user.id,
+    });
+  }
+
+  /**
+   * Activa un miembro de la agencia
+   * Solo los administradores pueden activar miembros
+   */
+  @Put('members/:memberId/activate')
+  async activateMember(
+    @Param('memberId') memberId: string,
+    @Session() session: UserSession,
+  ) {
+    const agencyId = await this.getUserAgencyId(session.user.id);
+
+    const result = await this.activateAgencyMemberUseCase.execute({
+      agencyId,
+      memberId: BigInt(memberId),
+      userId: session.user.id,
+    });
+
+    return {
+      message: result.message,
+      data: {
+        id: result.id,
+        isActive: result.isActive,
+      },
+    };
+  }
+
+  /**
+   * Desactiva un miembro de la agencia
+   * Solo los administradores pueden desactivar miembros
+   * Los miembros desactivados siguen apareciendo en el listado pero con isActive: false
+   */
+  @Put('members/:memberId/deactivate')
+  async deactivateMember(
+    @Param('memberId') memberId: string,
+    @Session() session: UserSession,
+  ) {
+    const agencyId = await this.getUserAgencyId(session.user.id);
+
+    const result = await this.deactivateAgencyMemberUseCase.execute({
+      agencyId,
+      memberId: BigInt(memberId),
+      userId: session.user.id,
+    });
+
+    return {
+      message: result.message,
+      data: {
+        id: result.id,
+        isActive: result.isActive,
+      },
+    };
+  }
+
+  /**
+   * Cambia la contraseña de un miembro de la agencia
+   * Solo los administradores pueden cambiar contraseñas
+   */
+  @Put('members/:memberId/password')
+  async changeMemberPassword(
+    @Param('memberId') memberId: string,
+    @Body() dto: ChangeMemberPasswordDto,
+    @Session() session: UserSession,
+  ) {
+    const agencyId = await this.getUserAgencyId(session.user.id);
+
+    return await this.changeAgencyMemberPasswordUseCase.execute({
+      agencyId,
+      memberId: BigInt(memberId),
+      userId: session.user.id,
+      newPassword: dto.newPassword,
+    });
   }
 }
