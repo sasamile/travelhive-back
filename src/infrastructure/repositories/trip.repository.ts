@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ITripRepository } from '../../domain/ports/trip.repository.port';
+import { ITripRepository, PublicTripFilters, PublicTripsResult } from '../../domain/ports/trip.repository.port';
 import {
   Trip,
   TripStatus,
@@ -259,6 +259,256 @@ export class TripRepository implements ITripRepository {
       },
     });
     return bookingCount > 0;
+  }
+
+  async findPublicTrips(filters: PublicTripFilters): Promise<PublicTripsResult> {
+    const page = filters.page || 1;
+    const limit = filters.limit || 20;
+    const skip = (page - 1) * limit;
+
+    // Construir condiciones de filtro
+    const whereConditions: any = {
+      status: TripStatus.PUBLISHED,
+      isActive: true,
+      agency: {
+        approvalStatus: 'APPROVED',
+      },
+    };
+
+    // Filtrar por ciudad (destino) - usa idCity del trip
+    if (filters.idCity || filters.idCityDestination) {
+      whereConditions.idCity = filters.idCityDestination || filters.idCity;
+    }
+
+    // Filtrar por ciudad de origen (primer RoutePoint con order mínimo)
+    if (filters.idCityOrigin) {
+      // Obtener el nombre de la ciudad de origen
+      const originCity = await this.prisma.city.findUnique({
+        where: { idCity: filters.idCityOrigin },
+        select: { nameCity: true },
+      });
+
+      if (originCity) {
+        // Filtrar trips que tengan un RoutePoint cuyo nombre coincida con la ciudad de origen
+        // y que tenga el order mínimo para ese trip (origen)
+        whereConditions.routePoints = {
+          some: {
+            name: {
+              contains: originCity.nameCity,
+              mode: 'insensitive',
+            },
+          },
+        };
+      }
+    }
+
+    // Filtrar por ciudad de destino (último RoutePoint con order máximo o idCity)
+    // Si ya se filtró por idCity arriba, ese filtro ya cubre el destino
+    // Si se quiere filtrar también por RoutePoint, se puede agregar lógica adicional aquí
+
+    // Si hay filtros de fecha o personas, necesitamos filtrar por expeditions
+    if (filters.startDate || filters.endDate || filters.persons) {
+      whereConditions.expeditions = {
+        some: {
+          status: 'AVAILABLE',
+          ...(filters.startDate && {
+            startDate: {
+              gte: filters.startDate,
+            },
+          }),
+          ...(filters.endDate && {
+            endDate: {
+              lte: filters.endDate,
+            },
+          }),
+          ...(filters.persons && {
+            capacityAvailable: {
+              gte: filters.persons,
+            },
+          }),
+        },
+      };
+    }
+
+    // Contar total de trips que cumplen los filtros
+    const total = await this.prisma.trip.count({
+      where: whereConditions,
+    });
+
+    // Obtener trips con paginación
+    const trips = await this.prisma.trip.findMany({
+      where: whereConditions,
+      include: {
+        routePoints: {
+          orderBy: {
+            order: 'asc',
+          },
+        },
+        galleryImages: {
+          orderBy: {
+            order: 'asc',
+          },
+        },
+        itineraryDays: {
+          include: {
+            activities: {
+              orderBy: {
+                order: 'asc',
+              },
+            },
+          },
+          orderBy: {
+            order: 'asc',
+          },
+        },
+        agency: {
+          select: {
+            idAgency: true,
+            nameAgency: true,
+            email: true,
+            phone: true,
+            picture: true,
+          },
+        },
+        city: {
+          select: {
+            idCity: true,
+            nameCity: true,
+          },
+        },
+        expeditions: {
+          where: {
+            status: 'AVAILABLE',
+            ...(filters.startDate && {
+              startDate: {
+                gte: filters.startDate,
+              },
+            }),
+            ...(filters.endDate && {
+              endDate: {
+                lte: filters.endDate,
+              },
+            }),
+            ...(filters.persons && {
+              capacityAvailable: {
+                gte: filters.persons,
+              },
+            }),
+          },
+          orderBy: {
+            startDate: 'asc',
+          },
+          take: 5, // Limitar a 5 próximas expediciones disponibles
+        },
+      },
+      orderBy: {
+        publishedAt: 'desc',
+      },
+      skip,
+      take: limit,
+    });
+
+    // Mapear trips incluyendo agency y city (que no están en la entidad Trip)
+    const mappedTrips = trips.map((trip) => {
+      const tripEntity = this.mapToEntity(trip);
+      return {
+        ...tripEntity,
+        // Incluir datos adicionales de agency y city
+        agency: trip.agency,
+        city: trip.city,
+        expeditions: trip.expeditions.map((exp) => ({
+          ...exp,
+          idExpedition: exp.idExpedition.toString(),
+          priceAdult: Number(exp.priceAdult),
+          priceChild: exp.priceChild ? Number(exp.priceChild) : null,
+        })),
+      };
+    });
+
+    return {
+      trips: mappedTrips,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  async findPublicTripById(id: bigint): Promise<Trip | null> {
+    const trip = await this.prisma.trip.findFirst({
+      where: {
+        idTrip: id,
+        status: TripStatus.PUBLISHED,
+        isActive: true,
+        agency: {
+          approvalStatus: 'APPROVED',
+        },
+      },
+      include: {
+        routePoints: {
+          orderBy: {
+            order: 'asc',
+          },
+        },
+        galleryImages: {
+          orderBy: {
+            order: 'asc',
+          },
+        },
+        itineraryDays: {
+          include: {
+            activities: {
+              orderBy: {
+                order: 'asc',
+              },
+            },
+          },
+          orderBy: {
+            order: 'asc',
+          },
+        },
+        agency: {
+          select: {
+            idAgency: true,
+            nameAgency: true,
+            email: true,
+            phone: true,
+            picture: true,
+          },
+        },
+        city: {
+          select: {
+            idCity: true,
+            nameCity: true,
+          },
+        },
+        expeditions: {
+          where: {
+            status: 'AVAILABLE',
+          },
+          orderBy: {
+            startDate: 'asc',
+          },
+        },
+      },
+    });
+
+    if (!trip) {
+      return null;
+    }
+
+    const tripEntity = this.mapToEntity(trip);
+    return {
+      ...tripEntity,
+      agency: trip.agency,
+      city: trip.city,
+      expeditions: trip.expeditions.map((exp) => ({
+        ...exp,
+        idExpedition: exp.idExpedition.toString(),
+        priceAdult: Number(exp.priceAdult),
+        priceChild: exp.priceChild ? Number(exp.priceChild) : null,
+      })),
+    } as any;
   }
 
   private mapToEntity(prismaTrip: any): Trip {

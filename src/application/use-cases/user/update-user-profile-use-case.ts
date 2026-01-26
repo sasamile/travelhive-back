@@ -9,6 +9,11 @@ export interface UpdateUserProfileInput {
   dniUser?: string;
   phoneUser?: string;
   picture?: string;
+  // Campos adicionales para customers/viajeros (opcionales)
+  bio?: string;
+  preferences?: string[];
+  travelStyles?: string[];
+  interestTags?: string[];
 }
 
 @Injectable()
@@ -39,6 +44,11 @@ export class UpdateUserProfileUseCase {
       ...(input.dniUser !== undefined && { dniUser: input.dniUser }),
       ...(input.phoneUser !== undefined && { phoneUser: input.phoneUser }),
       ...(input.picture !== undefined && { picture: input.picture }),
+      // Campos adicionales para customers/viajeros
+      ...(input.bio !== undefined && { bio: input.bio }),
+      ...(input.preferences !== undefined && { preferences: input.preferences }),
+      ...(input.travelStyles !== undefined && { travelStyles: input.travelStyles }),
+      ...(input.interestTags !== undefined && { interestTags: input.interestTags }),
     });
 
     return {
@@ -48,6 +58,10 @@ export class UpdateUserProfileUseCase {
       dniUser: updated.dniUser,
       phoneUser: updated.phoneUser,
       picture: updated.picture,
+      bio: updated.bio,
+      preferences: updated.preferences,
+      travelStyles: updated.travelStyles,
+      interestTags: updated.interestTags,
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt,
     };

@@ -3,52 +3,148 @@ import { PrismaService } from '../../../infrastructure/database/prisma/prisma.se
 import { BookingItemType } from '@prisma/client';
 import { WompiService } from '../../../config/payments/wompi.service';
 
-export interface CreateBookingInput {
+export interface CreateBookingFromTripInput {
   userId: string;
   userEmail: string;
   idTrip: bigint;
-  idExpedition: bigint;
+  startDate: Date;
+  endDate: Date;
   adults: number;
   children: number;
   discountCode?: string;
-  redirectUrl?: string; // URL a la que Wompi redirige después del pago
+  redirectUrl?: string;
 }
 
 @Injectable()
-export class CreateBookingUseCase {
+export class CreateBookingFromTripUseCase {
   constructor(
     private readonly prisma: PrismaService,
     private readonly wompiService: WompiService,
   ) {}
 
-  async execute(input: CreateBookingInput) {
+  async execute(input: CreateBookingFromTripInput) {
     const seats = input.adults + input.children;
     if (seats <= 0) {
       throw new BadRequestException('Debes comprar al menos 1 cupo (adultos o niños)');
     }
 
+    // Validar que las fechas sean válidas
+    if (input.startDate >= input.endDate) {
+      throw new BadRequestException('La fecha de inicio debe ser anterior a la fecha de fin');
+    }
+
     return this.prisma.$transaction(async (tx) => {
-      const expedition = await tx.expedition.findUnique({
-        where: { idExpedition: input.idExpedition },
-        include: { trip: true },
+      // Obtener el trip con toda su información
+      const trip = await tx.trip.findUnique({
+        where: { idTrip: input.idTrip },
+        include: { agency: true },
       });
 
-      if (!expedition || expedition.idTrip !== input.idTrip) {
-        throw new NotFoundException('Expedición no encontrada para ese trip');
+      if (!trip) {
+        throw new NotFoundException('Viaje no encontrado');
+      }
+
+      // Verificar que el trip esté publicado y activo
+      if (trip.status !== 'PUBLISHED' || trip.isActive !== true) {
+        throw new BadRequestException('Este viaje no está disponible para compra');
+      }
+
+      // Validar que las fechas estén dentro del rango del trip (si tiene fechas definidas)
+      if (trip.startDate && trip.endDate) {
+        const tripStart = new Date(trip.startDate);
+        const tripEnd = new Date(trip.endDate);
+        if (input.startDate < tripStart || input.endDate > tripEnd) {
+          throw new BadRequestException(
+            `Las fechas deben estar entre ${tripStart.toISOString().split('T')[0]} y ${tripEnd.toISOString().split('T')[0]}`,
+          );
+        }
+      }
+
+      // Validar capacidad máxima (si tiene maxPersons)
+      if (trip.maxPersons && seats > trip.maxPersons) {
+        throw new BadRequestException(`El viaje tiene capacidad máxima de ${trip.maxPersons} personas`);
+      }
+
+      // Buscar si ya existe una expedición para estas fechas
+      let expedition = await tx.expedition.findFirst({
+        where: {
+          idTrip: input.idTrip,
+          startDate: input.startDate,
+          endDate: input.endDate,
+          status: 'AVAILABLE',
+        },
+      });
+
+      // Si no existe expedición, crear una automáticamente
+      if (!expedition) {
+        // Calcular capacidad total basada en maxPersons del trip o un valor por defecto
+        const capacityTotal = trip.maxPersons || 20; // Valor por defecto si no tiene maxPersons
+
+        // Calcular precios (usar precio del trip o valores por defecto)
+        const priceAdult = trip.price ? Number(trip.price) : 100; // Valor por defecto
+        const priceChild = trip.price ? Number(trip.price) * 0.7 : 70; // 70% del precio adulto
+        const currency = trip.currency || 'USD';
+
+        // Verificar si hay cupos disponibles (contar reservas existentes para estas fechas)
+        const existingBookings = await tx.booking.findMany({
+          where: {
+            idTrip: input.idTrip,
+            status: {
+              in: ['PENDING', 'CONFIRMED'],
+            },
+            expedition: {
+              startDate: input.startDate,
+              endDate: input.endDate,
+            },
+          },
+          include: {
+            bookingItems: true,
+          },
+        });
+
+        const bookedSeats = existingBookings.reduce((total, booking) => {
+          return (
+            total +
+            booking.bookingItems.reduce((sum, item) => sum + item.quantity, 0)
+          );
+        }, 0);
+
+        const capacityAvailable = capacityTotal - bookedSeats;
+
+        if (capacityAvailable < seats) {
+          throw new BadRequestException(
+            `No hay cupos suficientes. Disponibles: ${capacityAvailable}, Solicitados: ${seats}`,
+          );
+        }
+
+        // Crear la expedición automáticamente
+        expedition = await tx.expedition.create({
+          data: {
+            idTrip: input.idTrip,
+            startDate: input.startDate,
+            endDate: input.endDate,
+            capacityTotal,
+            capacityAvailable,
+            priceAdult,
+            priceChild,
+            currency,
+            status: 'AVAILABLE',
+          },
+        });
+      }
+
+      // Verificar que la expedición tenga cupos suficientes
+      if (expedition.capacityAvailable < seats) {
+        throw new BadRequestException('No hay cupos suficientes en esta fecha');
       }
 
       if (expedition.status !== 'AVAILABLE') {
-        throw new BadRequestException('La expedición no está disponible para compras');
-      }
-
-      // Trip debe estar publicado y activo para poder comprar
-      if (expedition.trip.status !== 'PUBLISHED' || expedition.trip.isActive !== true) {
-        throw new BadRequestException('Este trip no está disponible para compra');
+        throw new BadRequestException('Esta fecha no está disponible para compras');
       }
 
       // Decremento atómico de cupos (evita oversell)
       const updatedExpedition = await tx.expedition.update({
-        where: { idExpedition: input.idExpedition },
+        where: { idExpedition: expedition.idExpedition },
         data: { capacityAvailable: { decrement: seats } },
       });
 
@@ -60,8 +156,7 @@ export class CreateBookingUseCase {
       const priceAdult = expedition.priceAdult;
       const priceChild = expedition.priceChild ?? expedition.priceAdult;
 
-      // Prisma Decimal soporta multiplicación usando string/number, pero para evitar problemas,
-      // calculamos usando JS number y dejamos que Prisma haga cast.
+      // Calcular subtotal
       const subtotalNumber = input.adults * Number(priceAdult) + input.children * Number(priceChild);
 
       // Descuento básico (sin límites) - si existe código activo aplicable
@@ -77,13 +172,13 @@ export class CreateBookingUseCase {
         }
 
         // Validación de scope: si tiene idTrip/idExpedition/idAgency, debe coincidir
-        if (code.idTrip && code.idTrip !== expedition.idTrip) {
-          throw new BadRequestException('Código de descuento no aplica a este trip');
+        if (code.idTrip && code.idTrip !== trip.idTrip) {
+          throw new BadRequestException('Código de descuento no aplica a este viaje');
         }
         if (code.idExpedition && code.idExpedition !== expedition.idExpedition) {
-          throw new BadRequestException('Código de descuento no aplica a esta expedición');
+          throw new BadRequestException('Código de descuento no aplica a esta fecha');
         }
-        if (code.idAgency && code.idAgency !== expedition.trip.idAgency) {
+        if (code.idAgency && code.idAgency !== trip.idAgency) {
           throw new BadRequestException('Código de descuento no aplica a esta agencia');
         }
 
@@ -105,8 +200,8 @@ export class CreateBookingUseCase {
       const booking = await tx.booking.create({
         data: {
           idExpedition: expedition.idExpedition,
-          idTrip: expedition.idTrip,
-          idAgency: expedition.trip.idAgency,
+          idTrip: trip.idTrip,
+          idAgency: trip.idAgency,
           ownerBuy: input.userId,
           status: 'PENDING', // Pendiente hasta que Wompi confirme el pago
           subtotal: subtotalNumber,
@@ -213,6 +308,10 @@ export class CreateBookingUseCase {
           startDate: updatedExpedition.startDate.toISOString(),
           endDate: updatedExpedition.endDate.toISOString(),
           capacityAvailable: updatedExpedition.capacityAvailable,
+        },
+        trip: {
+          idTrip: trip.idTrip.toString(),
+          title: trip.title,
         },
       };
     });

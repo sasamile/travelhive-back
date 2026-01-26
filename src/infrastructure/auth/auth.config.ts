@@ -60,6 +60,23 @@ export const createAuthInstance = (prisma: PrismaClient) => {
           type: 'string',
           required: false,
         },
+        // Campos adicionales para customers/viajeros (opcionales)
+        bio: {
+          type: 'string',
+          required: false,
+        },
+        preferences: {
+          type: 'string',
+          required: false,
+        },
+        travelStyles: {
+          type: 'string',
+          required: false,
+        },
+        interestTags: {
+          type: 'string',
+          required: false,
+        },
       },
     },
     hooks: {
@@ -82,9 +99,34 @@ export const createAuthInstance = (prisma: PrismaClient) => {
           
           // Obtener las agencias del usuario (si tiene alguna)
           // Los viajeros pueden no tener agencias, así que esto puede retornar un array vacío
+          // IMPORTANTE:
+          // Si la base de datos aún no tiene la columna `agency_members.is_active`,
+          // un `include`/lectura completa del modelo `AgencyMember` puede fallar con P2022.
+          // Usamos `select` para traer solo lo necesario y evitar tocar columnas faltantes.
           const agencyMembers = await prisma.agencyMember.findMany({
             where: { idUser: userId },
-            include: { agency: true },
+            select: {
+              idAgency: true,
+              role: true,
+              agency: {
+                select: {
+                  idAgency: true,
+                  nameAgency: true,
+                  email: true,
+                  phone: true,
+                  nit: true,
+                  rntNumber: true,
+                  picture: true,
+                  status: true,
+                  approvalStatus: true,
+                  rejectionReason: true,
+                  reviewedBy: true,
+                  reviewedAt: true,
+                  createdAt: true,
+                  updatedAt: true,
+                },
+              },
+            },
           });
 
           // Formatear la información de agencias

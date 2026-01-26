@@ -1,11 +1,14 @@
-import { IsInt, IsOptional, IsString, IsUrl, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, IsUrl, IsDateString, Min } from 'class-validator';
 
-export class CreateBookingDto {
+export class CreateBookingFromTripDto {
   @IsString()
   idTrip: string; // BigInt serializado
 
-  @IsString()
-  idExpedition: string; // BigInt serializado
+  @IsDateString()
+  startDate: string; // Fecha de inicio del viaje (ISO string)
+
+  @IsDateString()
+  endDate: string; // Fecha de fin del viaje (ISO string)
 
   @IsInt()
   @Min(0)

@@ -59,6 +59,19 @@ export class UserRepository implements IUserRepository {
     return !!account;
   }
 
+  async getAccountPassword(userId: string): Promise<string | null> {
+    const account = await this.prisma.account.findFirst({
+      where: {
+        userId,
+        providerId: 'credential',
+      },
+      select: {
+        password: true,
+      },
+    });
+    return account?.password || null;
+  }
+
   async findByEmail(email: string): Promise<User | null> {
     const user = await this.prisma.user.findUnique({
       where: { email },
@@ -83,20 +96,72 @@ export class UserRepository implements IUserRepository {
   }
 
   async update(id: string, data: Partial<User>): Promise<User> {
+    const updateData: any = {
+      ...(data.emailUser && { email: data.emailUser }),
+      ...(data.nameUser && { name: data.nameUser }),
+      ...(data.dniUser !== undefined && { dniUser: data.dniUser }),
+      ...(data.phoneUser !== undefined && { phoneUser: data.phoneUser }),
+      ...(data.picture !== undefined && { image: data.picture }), // Better Auth usa 'image'
+    };
+
+    // Campos adicionales para customers/viajeros
+    if (data.bio !== undefined) {
+      updateData.bio = data.bio;
+    }
+    if (data.preferences !== undefined) {
+      // Guardar como JSON string en Prisma
+      updateData.preferences = data.preferences.length > 0 ? JSON.stringify(data.preferences) : null;
+    }
+    if (data.travelStyles !== undefined) {
+      updateData.travelStyles = data.travelStyles.length > 0 ? JSON.stringify(data.travelStyles) : null;
+    }
+    if (data.interestTags !== undefined) {
+      updateData.interestTags = data.interestTags.length > 0 ? JSON.stringify(data.interestTags) : null;
+    }
+
     const updated = await this.prisma.user.update({
       where: { id },
-      data: {
-        ...(data.emailUser && { email: data.emailUser }),
-        ...(data.nameUser && { name: data.nameUser }),
-        ...(data.dniUser !== undefined && { dniUser: data.dniUser }),
-        ...(data.phoneUser !== undefined && { phoneUser: data.phoneUser }),
-        ...(data.picture !== undefined && { image: data.picture }), // Better Auth usa 'image'
-      },
+      data: updateData,
     });
     return this.mapToEntity(updated);
   }
 
   private mapToEntity(prismaUser: any): User {
+    // Parsear campos JSON si existen
+    let preferences: string[] | undefined;
+    let travelStyles: string[] | undefined;
+    let interestTags: string[] | undefined;
+
+    if (prismaUser.preferences) {
+      try {
+        preferences = typeof prismaUser.preferences === 'string' 
+          ? JSON.parse(prismaUser.preferences) 
+          : prismaUser.preferences;
+      } catch {
+        preferences = undefined;
+      }
+    }
+
+    if (prismaUser.travelStyles) {
+      try {
+        travelStyles = typeof prismaUser.travelStyles === 'string'
+          ? JSON.parse(prismaUser.travelStyles)
+          : prismaUser.travelStyles;
+      } catch {
+        travelStyles = undefined;
+      }
+    }
+
+    if (prismaUser.interestTags) {
+      try {
+        interestTags = typeof prismaUser.interestTags === 'string'
+          ? JSON.parse(prismaUser.interestTags)
+          : prismaUser.interestTags;
+      } catch {
+        interestTags = undefined;
+      }
+    }
+
     return new User({
       idUser: prismaUser.id, // Better Auth usa String (CUID) para id
       dniUser: prismaUser.dniUser,
@@ -106,6 +171,10 @@ export class UserRepository implements IUserRepository {
       userId: prismaUser.id, // En Better Auth, userId = id
       picture: prismaUser.image || undefined, // Better Auth usa 'image', lo mapeamos a 'picture'
       password: '', // La contraseña está en Account, no en User
+      bio: prismaUser.bio || undefined,
+      preferences,
+      travelStyles,
+      interestTags,
       createdAt: prismaUser.createdAt,
       updatedAt: prismaUser.updatedAt,
     });

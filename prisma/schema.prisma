@@ -85,8 +85,14 @@ model User {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   // Campos adicionales personalizados
-  dniUser   String? @map("dni_user")
-  phoneUser String? @map("phone_user")
+  dniUser      String?  @map("dni_user")
+  phoneUser    String?  @map("phone_user")
+  
+  // Campos adicionales para customers/viajeros (opcionales)
+  bio          String?  // Biografía del usuario
+  preferences  String?  // Preferencias de viaje (JSON string: ["Aventura", "Playa", ...])
+  travelStyles String?  @map("travel_styles") // Estilos de viaje (JSON string: ["Aventura", "Lujo", ...])
+  interestTags String?  @map("interest_tags") // Destinos de interés (JSON string: ["Islandia", "Japón", ...])
 
   // Relaciones
   sessions          Session[]

@@ -498,20 +498,23 @@ export class AgencyController {
   /**
    * Compra/reserva cupos en una expedición (usuario normal).
    * Crea un Booking y descuenta cupos con transacción.
+   * Genera link de pago de Wompi.
    */
   @Post('bookings')
   @HttpCode(HttpStatus.CREATED)
   async createBooking(@Session() session: UserSession, @Body() dto: CreateBookingDto) {
     const booking = await this.createBookingUseCase.execute({
       userId: session.user.id,
+      userEmail: session.user.email,
       idTrip: BigInt(dto.idTrip),
       idExpedition: BigInt(dto.idExpedition),
       adults: dto.adults,
       children: dto.children,
       discountCode: dto.discountCode,
+      redirectUrl: dto.redirectUrl,
     });
 
-    return { message: 'Compra realizada', data: booking };
+    return { message: 'Reserva creada exitosamente', data: booking };
   }
 
   /**

@@ -9,4 +9,5 @@ export interface IUserRepository {
   createAccount(userId: string, email: string, hashedPassword: string): Promise<void>;
   updatePassword(userId: string, hashedPassword: string): Promise<void>;
   hasAccount(userId: string): Promise<boolean>;
+  getAccountPassword(userId: string): Promise<string | null>; // Obtener contraseña hasheada para verificación
 }

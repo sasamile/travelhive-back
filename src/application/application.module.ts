@@ -5,6 +5,8 @@ import { ApproveAgencyUseCase } from './use-cases/agency/approve-agency-use-case
 import { ListPendingAgenciesUseCase } from './use-cases/agency/list-pending-agencies-use-case';
 import { CreateTripUseCase } from './use-cases/trip/create-trip-use-case';
 import { ListTripsUseCase } from './use-cases/trip/list-trips-use-case';
+import { ListPublicTripsUseCase } from './use-cases/trip/list-public-trips-use-case';
+import { GetPublicTripByIdUseCase } from './use-cases/trip/get-public-trip-by-id-use-case';
 import { GetTripByIdUseCase } from './use-cases/trip/get-trip-by-id-use-case';
 import { UpdateTripUseCase } from './use-cases/trip/update-trip-use-case';
 import { DeleteTripUseCase } from './use-cases/trip/delete-trip-use-case';
@@ -14,6 +16,7 @@ import { CreateExpeditionUseCase } from './use-cases/expedition/create-expeditio
 import { ListExpeditionsUseCase } from './use-cases/expedition/list-expeditions-use-case';
 import { ListAgencyExpeditionsUseCase } from './use-cases/expedition/list-agency-expeditions-use-case';
 import { UpdateUserProfileUseCase } from './use-cases/user/update-user-profile-use-case';
+import { ChangePasswordUseCase } from './use-cases/user/change-password-use-case';
 import { UpdateAgencyUseCase } from './use-cases/agency/update-agency-use-case';
 import { CreateAgencyMemberUseCase } from './use-cases/agency/create-agency-member-use-case';
 import { UpdateAgencyMemberUseCase } from './use-cases/agency/update-agency-member-use-case';
@@ -24,11 +27,14 @@ import { DeactivateAgencyMemberUseCase } from './use-cases/agency/deactivate-age
 import { ChangeAgencyMemberPasswordUseCase } from './use-cases/agency/change-agency-member-password-use-case';
 import { ListAgencyMembersUseCase } from './use-cases/agency/list-agency-members-use-case';
 import { CreateBookingUseCase } from './use-cases/booking/create-booking-use-case';
+import { CreateBookingFromTripUseCase } from './use-cases/booking/create-booking-from-trip-use-case';
 import { ListMyBookingsUseCase } from './use-cases/booking/list-my-bookings-use-case';
+import { UpdateBookingPaymentUseCase } from './use-cases/booking/update-booking-payment-use-case';
 import { InfrastructureModule } from '../infrastructure/infrastructure.module';
+import { PaymentsModule } from '../config/payments/payments.module';
 
 @Module({
-  imports: [InfrastructureModule],
+  imports: [InfrastructureModule, PaymentsModule],
   providers: [
     RegisterAgencyUseCase,
     LoginUseCase,
@@ -36,6 +42,8 @@ import { InfrastructureModule } from '../infrastructure/infrastructure.module';
     ListPendingAgenciesUseCase,
     CreateTripUseCase,
     ListTripsUseCase,
+    ListPublicTripsUseCase,
+    GetPublicTripByIdUseCase,
     GetTripByIdUseCase,
     UpdateTripUseCase,
     DeleteTripUseCase,
@@ -45,6 +53,7 @@ import { InfrastructureModule } from '../infrastructure/infrastructure.module';
     ListExpeditionsUseCase,
     ListAgencyExpeditionsUseCase,
     UpdateUserProfileUseCase,
+    ChangePasswordUseCase,
     UpdateAgencyUseCase,
     CreateAgencyMemberUseCase,
     UpdateAgencyMemberUseCase,
@@ -55,7 +64,9 @@ import { InfrastructureModule } from '../infrastructure/infrastructure.module';
     ChangeAgencyMemberPasswordUseCase,
     ListAgencyMembersUseCase,
     CreateBookingUseCase,
+    CreateBookingFromTripUseCase,
     ListMyBookingsUseCase,
+    UpdateBookingPaymentUseCase,
   ],
   exports: [
     RegisterAgencyUseCase,
@@ -64,6 +75,8 @@ import { InfrastructureModule } from '../infrastructure/infrastructure.module';
     ListPendingAgenciesUseCase,
     CreateTripUseCase,
     ListTripsUseCase,
+    ListPublicTripsUseCase,
+    GetPublicTripByIdUseCase,
     GetTripByIdUseCase,
     UpdateTripUseCase,
     DeleteTripUseCase,
@@ -73,6 +86,7 @@ import { InfrastructureModule } from '../infrastructure/infrastructure.module';
     ListExpeditionsUseCase,
     ListAgencyExpeditionsUseCase,
     UpdateUserProfileUseCase,
+    ChangePasswordUseCase,
     UpdateAgencyUseCase,
     CreateAgencyMemberUseCase,
     UpdateAgencyMemberUseCase,
@@ -83,7 +97,9 @@ import { InfrastructureModule } from '../infrastructure/infrastructure.module';
     ChangeAgencyMemberPasswordUseCase,
     ListAgencyMembersUseCase,
     CreateBookingUseCase,
+    CreateBookingFromTripUseCase,
     ListMyBookingsUseCase,
+    UpdateBookingPaymentUseCase,
   ],
 })
 export class ApplicationModule {}

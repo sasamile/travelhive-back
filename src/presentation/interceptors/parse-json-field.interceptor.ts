@@ -41,6 +41,9 @@ export class ParseJsonFieldInterceptor implements NestInterceptor {
         'data',
         'user',
         'agency',
+        'preferences',
+        'travelStyles',
+        'interestTags',
       ];
 
       jsonFields.forEach((field) => {
