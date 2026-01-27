@@ -95,6 +95,7 @@ export class Trip {
   status: TripStatus;
   isActive: boolean;
   publishedAt?: Date;
+  idPromoter?: bigint;
   createdAt: Date;
   updatedAt: Date;
   

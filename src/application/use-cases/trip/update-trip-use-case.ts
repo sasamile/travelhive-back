@@ -1,9 +1,10 @@
-import { Injectable, Inject, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, Inject, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
 import type { ITripRepository } from '../../../domain/ports/trip.repository.port';
 import type { IAgencyMemberRepository } from '../../../domain/ports/agency.repository.port';
 import { TRIP_REPOSITORY, AGENCY_MEMBER_REPOSITORY } from '../../../domain/ports/tokens';
 import { Trip, TripStatus, TripCategory } from '../../../domain/entities/trip.entity';
 import { UpdateTripDto } from '../../../presentation/dto/update-trip.dto';
+import { PrismaService } from '../../../infrastructure/database/prisma/prisma.service';
 
 @Injectable()
 export class UpdateTripUseCase {
@@ -12,6 +13,7 @@ export class UpdateTripUseCase {
     private readonly tripRepository: ITripRepository,
     @Inject(AGENCY_MEMBER_REPOSITORY)
     private readonly agencyMemberRepository: IAgencyMemberRepository,
+    private readonly prisma: PrismaService,
   ) {}
 
   async execute(
@@ -72,7 +74,77 @@ export class UpdateTripUseCase {
       updateData.publishedAt = new Date();
     }
 
+    // Manejar promoter: buscar existente o crear nuevo
+    let promoterId: bigint | undefined = undefined;
+    if (data.promoterCode !== undefined) {
+      if (data.promoterCode === null || data.promoterCode === '') {
+        // Si se envía vacío, remover el promoter
+        promoterId = undefined;
+      } else {
+        // Buscar promoter existente por código
+        const existingPromoter = await this.prisma.promoter.findUnique({
+          where: { code: data.promoterCode },
+        });
+        
+        if (existingPromoter) {
+          if (existingPromoter.idAgency !== agencyId) {
+            throw new BadRequestException('El promoter no pertenece a tu agencia');
+          }
+          promoterId = existingPromoter.id;
+        } else if (data.promoterName) {
+          // Crear nuevo promoter
+          const newPromoter = await this.prisma.promoter.create({
+            data: {
+              idAgency: agencyId,
+              code: data.promoterCode,
+              name: data.promoterName,
+              isActive: true,
+            },
+          });
+          promoterId = newPromoter.id;
+        } else {
+          throw new BadRequestException('Si proporcionas un código de promoter nuevo, debes incluir el nombre');
+        }
+      }
+      updateData.idPromoter = promoterId;
+    }
+
     const updatedTrip = await this.tripRepository.update(tripId, updateData);
-    return updatedTrip;
+
+    // Manejar códigos de descuento si se proporcionaron
+    if (data.discountCodes !== undefined) {
+      // Eliminar códigos de descuento existentes del trip
+      await this.prisma.discountCode.deleteMany({
+        where: { idTrip: tripId },
+      });
+
+      // Crear nuevos códigos de descuento si se proporcionaron
+      if (data.discountCodes.length > 0) {
+        await Promise.all(
+          data.discountCodes.map((discountCode) =>
+            this.prisma.discountCode.create({
+              data: {
+                codeName: discountCode.code,
+                discountType: 'PERCENTAGE',
+                value: discountCode.percentage,
+                maxUses: discountCode.maxUses,
+                perUserLimit: discountCode.perUserLimit,
+                idAgency: agencyId,
+                idTrip: tripId,
+                active: true,
+              },
+            }),
+          ),
+        );
+      }
+    }
+
+    // Recargar el trip con relaciones para devolverlo completo
+    const tripWithRelations = await this.tripRepository.findById(tripId);
+    if (!tripWithRelations) {
+      throw new NotFoundException('Error al actualizar el viaje');
+    }
+
+    return tripWithRelations;
   }
 }

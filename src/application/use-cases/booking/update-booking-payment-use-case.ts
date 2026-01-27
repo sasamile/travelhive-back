@@ -1,5 +1,6 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../../infrastructure/database/prisma/prisma.service';
+import { ExpeditionStatusUpdateService } from '../../services/expedition-status-update.service';
 
 export interface UpdateBookingPaymentInput {
   bookingId: bigint;
@@ -10,10 +11,24 @@ export interface UpdateBookingPaymentInput {
 
 @Injectable()
 export class UpdateBookingPaymentUseCase {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => ExpeditionStatusUpdateService))
+    private readonly expeditionStatusUpdateService: ExpeditionStatusUpdateService,
+  ) {}
 
   async execute(input: UpdateBookingPaymentInput) {
-    return this.prisma.$transaction(async (tx) => {
+    // Obtener el idExpedition antes de la transacción para actualizar el estado después
+    const bookingForExpedition = await this.prisma.booking.findUnique({
+      where: { idBooking: input.bookingId },
+      select: { idExpedition: true },
+    });
+
+    if (!bookingForExpedition) {
+      throw new NotFoundException('Reserva no encontrada');
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
       const booking = await tx.booking.findUnique({
         where: { idBooking: input.bookingId },
         include: {
@@ -44,13 +59,95 @@ export class UpdateBookingPaymentUseCase {
 
       if (input.status === 'APPROVED') {
         newStatus = 'CONFIRMED';
-      } else if (input.status === 'DECLINED' || input.status === 'VOIDED') {
-        // Si el pago falla, devolver los cupos a la expedición
-        const seatsToReturn = booking.bookingItems.reduce((sum, item) => sum + item.quantity, 0);
         
+        // Incrementar contador de referidos del promoter si el trip tiene uno asociado
+        const trip = await tx.trip.findUnique({
+          where: { idTrip: booking.idTrip },
+          select: { idPromoter: true },
+        });
+        
+        if (trip?.idPromoter) {
+          await tx.promoter.update({
+            where: { id: trip.idPromoter },
+            data: { referralCount: { increment: 1 } },
+          });
+        }
+        
+        // Recalcular capacityAvailable basado SOLO en reservas CONFIRMED
+        // Esto asegura que el campo esté sincronizado correctamente
+        const confirmedBookings = await tx.booking.findMany({
+          where: {
+            idExpedition: booking.idExpedition,
+            status: 'CONFIRMED',
+          },
+          include: {
+            bookingItems: true,
+          },
+        });
+
+        // Incluir esta reserva que se está confirmando ahora
+        const allConfirmedBookings = [
+          ...confirmedBookings,
+          {
+            ...booking,
+            status: 'CONFIRMED' as const,
+            bookingItems: booking.bookingItems,
+          },
+        ];
+
+        const bookedSeatsFromConfirmed = allConfirmedBookings.reduce((total, b) => {
+          return (
+            total +
+            b.bookingItems.reduce((sum, item) => sum + item.quantity, 0)
+          );
+        }, 0);
+
+        const realCapacityAvailable = Math.max(0, booking.expedition.capacityTotal - bookedSeatsFromConfirmed);
+
+        // Actualizar capacityAvailable con el valor real calculado
+        // También actualizar el estado de la expedición si está llena
+        const occupancyPercentage =
+          booking.expedition.capacityTotal > 0
+            ? Math.round((bookedSeatsFromConfirmed / booking.expedition.capacityTotal) * 100)
+            : 0;
+
+        let expeditionStatus = booking.expedition.status;
+        if (occupancyPercentage >= 100 && booking.expedition.status !== 'FULL' && booking.expedition.status !== 'COMPLETED') {
+          expeditionStatus = 'FULL';
+        }
+
         await tx.expedition.update({
           where: { idExpedition: booking.idExpedition },
-          data: { capacityAvailable: { increment: seatsToReturn } },
+          data: {
+            capacityAvailable: realCapacityAvailable,
+            ...(expeditionStatus !== booking.expedition.status && { status: expeditionStatus }),
+          },
+        });
+      } else if (input.status === 'DECLINED' || input.status === 'VOIDED') {
+        // Si el pago falla, recalcular capacityAvailable basado solo en CONFIRMED
+        const confirmedBookings = await tx.booking.findMany({
+          where: {
+            idExpedition: booking.idExpedition,
+            status: 'CONFIRMED',
+          },
+          include: {
+            bookingItems: true,
+          },
+        });
+
+        const bookedSeatsFromConfirmed = confirmedBookings.reduce((total, b) => {
+          return (
+            total +
+            b.bookingItems.reduce((sum, item) => sum + item.quantity, 0)
+          );
+        }, 0);
+
+        const realCapacityAvailable = Math.max(0, booking.expedition.capacityTotal - bookedSeatsFromConfirmed);
+
+        // Actualizar capacityAvailable con el valor real calculado
+        await tx.expedition.update({
+          where: { idExpedition: booking.idExpedition },
+          data: { capacityAvailable: realCapacityAvailable },
         });
 
         // Mantener PENDING o cambiar a CANCELLED según tu lógica de negocio
@@ -75,5 +172,18 @@ export class UpdateBookingPaymentUseCase {
         message: newStatus === 'CONFIRMED' ? 'Reserva confirmada exitosamente' : 'Pago rechazado, cupos devueltos',
       };
     });
+
+    // Actualizar el estado de la expedición después de la transacción
+    // Esto verifica si está llena o si la fecha pasó
+    if (input.status === 'APPROVED' && result) {
+      try {
+        await this.expeditionStatusUpdateService.updateExpeditionStatus(bookingForExpedition.idExpedition);
+      } catch (error: any) {
+        // No fallar si hay error al actualizar el estado, solo loguear
+        console.warn(`Error al actualizar estado de expedición: ${error.message}`);
+      }
+    }
+
+    return result;
   }
 }

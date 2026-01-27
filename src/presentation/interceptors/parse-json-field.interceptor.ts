@@ -38,6 +38,7 @@ export class ParseJsonFieldInterceptor implements NestInterceptor {
         'routePoints',
         'galleryImages',
         'itinerary',
+        'discountCodes', // Códigos de descuento
         'data',
         'user',
         'agency',

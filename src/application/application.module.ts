@@ -8,6 +8,7 @@ import { ListTripsUseCase } from './use-cases/trip/list-trips-use-case';
 import { ListPublicTripsUseCase } from './use-cases/trip/list-public-trips-use-case';
 import { GetPublicTripByIdUseCase } from './use-cases/trip/get-public-trip-by-id-use-case';
 import { GetTripByIdUseCase } from './use-cases/trip/get-trip-by-id-use-case';
+import { GetTripStatsUseCase } from './use-cases/trip/get-trip-stats-use-case';
 import { UpdateTripUseCase } from './use-cases/trip/update-trip-use-case';
 import { DeleteTripUseCase } from './use-cases/trip/delete-trip-use-case';
 import { ChangeTripStatusUseCase } from './use-cases/trip/change-trip-status-use-case';
@@ -15,6 +16,8 @@ import { ToggleTripActiveUseCase } from './use-cases/trip/toggle-trip-active-use
 import { CreateExpeditionUseCase } from './use-cases/expedition/create-expedition-use-case';
 import { ListExpeditionsUseCase } from './use-cases/expedition/list-expeditions-use-case';
 import { ListAgencyExpeditionsUseCase } from './use-cases/expedition/list-agency-expeditions-use-case';
+import { UpdateExpeditionUseCase } from './use-cases/expedition/update-expedition-use-case';
+import { DeleteExpeditionUseCase } from './use-cases/expedition/delete-expedition-use-case';
 import { UpdateUserProfileUseCase } from './use-cases/user/update-user-profile-use-case';
 import { ChangePasswordUseCase } from './use-cases/user/change-password-use-case';
 import { UpdateAgencyUseCase } from './use-cases/agency/update-agency-use-case';
@@ -26,10 +29,15 @@ import { ActivateAgencyMemberUseCase } from './use-cases/agency/activate-agency-
 import { DeactivateAgencyMemberUseCase } from './use-cases/agency/deactivate-agency-member-use-case';
 import { ChangeAgencyMemberPasswordUseCase } from './use-cases/agency/change-agency-member-password-use-case';
 import { ListAgencyMembersUseCase } from './use-cases/agency/list-agency-members-use-case';
+import { GetAgencyInsightsUseCase } from './use-cases/agency/get-agency-insights-use-case';
 import { CreateBookingUseCase } from './use-cases/booking/create-booking-use-case';
 import { CreateBookingFromTripUseCase } from './use-cases/booking/create-booking-from-trip-use-case';
 import { ListMyBookingsUseCase } from './use-cases/booking/list-my-bookings-use-case';
+import { ListAgencyBookingsUseCase } from './use-cases/booking/list-agency-bookings-use-case';
 import { UpdateBookingPaymentUseCase } from './use-cases/booking/update-booking-payment-use-case';
+import { CancelPendingBookingUseCase } from './use-cases/booking/cancel-pending-booking-use-case';
+import { BookingCleanupService } from './services/booking-cleanup.service';
+import { ExpeditionStatusUpdateService } from './services/expedition-status-update.service';
 import { InfrastructureModule } from '../infrastructure/infrastructure.module';
 import { PaymentsModule } from '../config/payments/payments.module';
 
@@ -45,6 +53,7 @@ import { PaymentsModule } from '../config/payments/payments.module';
     ListPublicTripsUseCase,
     GetPublicTripByIdUseCase,
     GetTripByIdUseCase,
+    GetTripStatsUseCase,
     UpdateTripUseCase,
     DeleteTripUseCase,
     ChangeTripStatusUseCase,
@@ -52,6 +61,8 @@ import { PaymentsModule } from '../config/payments/payments.module';
     CreateExpeditionUseCase,
     ListExpeditionsUseCase,
     ListAgencyExpeditionsUseCase,
+    UpdateExpeditionUseCase,
+    DeleteExpeditionUseCase,
     UpdateUserProfileUseCase,
     ChangePasswordUseCase,
     UpdateAgencyUseCase,
@@ -63,10 +74,15 @@ import { PaymentsModule } from '../config/payments/payments.module';
     DeactivateAgencyMemberUseCase,
     ChangeAgencyMemberPasswordUseCase,
     ListAgencyMembersUseCase,
+    GetAgencyInsightsUseCase,
     CreateBookingUseCase,
     CreateBookingFromTripUseCase,
     ListMyBookingsUseCase,
+    ListAgencyBookingsUseCase,
     UpdateBookingPaymentUseCase,
+    CancelPendingBookingUseCase,
+    BookingCleanupService,
+    ExpeditionStatusUpdateService,
   ],
   exports: [
     RegisterAgencyUseCase,
@@ -78,6 +94,7 @@ import { PaymentsModule } from '../config/payments/payments.module';
     ListPublicTripsUseCase,
     GetPublicTripByIdUseCase,
     GetTripByIdUseCase,
+    GetTripStatsUseCase,
     UpdateTripUseCase,
     DeleteTripUseCase,
     ChangeTripStatusUseCase,
@@ -85,6 +102,8 @@ import { PaymentsModule } from '../config/payments/payments.module';
     CreateExpeditionUseCase,
     ListExpeditionsUseCase,
     ListAgencyExpeditionsUseCase,
+    UpdateExpeditionUseCase,
+    DeleteExpeditionUseCase,
     UpdateUserProfileUseCase,
     ChangePasswordUseCase,
     UpdateAgencyUseCase,
@@ -96,10 +115,15 @@ import { PaymentsModule } from '../config/payments/payments.module';
     DeactivateAgencyMemberUseCase,
     ChangeAgencyMemberPasswordUseCase,
     ListAgencyMembersUseCase,
+    GetAgencyInsightsUseCase,
     CreateBookingUseCase,
     CreateBookingFromTripUseCase,
     ListMyBookingsUseCase,
+    ListAgencyBookingsUseCase,
     UpdateBookingPaymentUseCase,
+    CancelPendingBookingUseCase,
+    BookingCleanupService,
+    ExpeditionStatusUpdateService,
   ],
 })
 export class ApplicationModule {}

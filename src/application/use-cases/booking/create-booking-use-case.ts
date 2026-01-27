@@ -159,13 +159,22 @@ export class CreateBookingUseCase {
       // Generar referencia única para Wompi
       const wompiReference = this.wompiService.generateReference(booking.idBooking.toString());
 
+      // Construir redirectUrl: si no se proporciona, usar el por defecto con la referencia
+      // Wompi agregará automáticamente el parámetro 'id' con el transaction ID
+      // NOTA: En sandbox, Wompi puede bloquear localhost. Si hay problemas, usar una URL pública o omitir redirectUrl
+      const redirectUrl =
+        input.redirectUrl ||
+        (process.env.FRONTEND_URL
+          ? `${process.env.FRONTEND_URL}/customers/trip?reference=${encodeURIComponent(wompiReference)}&bookingId=${booking.idBooking.toString()}`
+          : `https://187c24719bf7.ngrok-free.app/customers/trip?reference=${encodeURIComponent(wompiReference)}&bookingId=${booking.idBooking.toString()}`);
+
       // Generar link de pago (Web Checkout). La transacción se crea cuando el usuario paga en Wompi.
       const wompiPaymentLink = this.wompiService.buildCheckoutLink({
         amount: totalNumber,
         currency: expedition.currency,
         customerEmail: input.userEmail,
         reference: wompiReference,
-        redirectUrl: input.redirectUrl,
+        redirectUrl,
       });
 
       // Guardar referencia para trazabilidad (transactionId se obtiene luego desde el redirect o verificación)

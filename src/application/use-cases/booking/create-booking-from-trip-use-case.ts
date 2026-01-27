@@ -66,12 +66,17 @@ export class CreateBookingFromTripUseCase {
       }
 
       // Buscar si ya existe una expedición para estas fechas
+      // IMPORTANTE: Buscar sin filtrar por status para evitar crear duplicados
+      // Si existe una expedición con estas fechas, usarla (aunque esté en otro status)
       let expedition = await tx.expedition.findFirst({
         where: {
           idTrip: input.idTrip,
           startDate: input.startDate,
           endDate: input.endDate,
-          status: 'AVAILABLE',
+          // No filtrar por status para evitar crear duplicados
+        },
+        orderBy: {
+          createdAt: 'desc', // Usar la más reciente si hay múltiples
         },
       });
 
@@ -86,12 +91,12 @@ export class CreateBookingFromTripUseCase {
         const currency = trip.currency || 'USD';
 
         // Verificar si hay cupos disponibles (contar reservas existentes para estas fechas)
+        // IMPORTANTE: Solo contar reservas CONFIRMED para el cálculo de cupos
+        // Las reservas PENDING pueden cancelarse y liberar cupos, por eso no las contamos
         const existingBookings = await tx.booking.findMany({
           where: {
             idTrip: input.idTrip,
-            status: {
-              in: ['PENDING', 'CONFIRMED'],
-            },
+            status: 'CONFIRMED', // Solo reservas confirmadas cuentan para cupos
             expedition: {
               startDate: input.startDate,
               endDate: input.endDate,
@@ -109,7 +114,9 @@ export class CreateBookingFromTripUseCase {
           );
         }, 0);
 
-        const capacityAvailable = capacityTotal - bookedSeats;
+        // La capacidad disponible es la total menos las reservas CONFIRMED
+        // Las reservas PENDING no se cuentan porque pueden cancelarse
+        const capacityAvailable = Math.max(0, capacityTotal - bookedSeats);
 
         if (capacityAvailable < seats) {
           throw new BadRequestException(
@@ -117,35 +124,78 @@ export class CreateBookingFromTripUseCase {
           );
         }
 
-        // Crear la expedición automáticamente
-        expedition = await tx.expedition.create({
-          data: {
+        // Verificar una vez más que no se haya creado una expedición en paralelo (race condition)
+        const duplicateCheck = await tx.expedition.findFirst({
+          where: {
             idTrip: input.idTrip,
             startDate: input.startDate,
             endDate: input.endDate,
-            capacityTotal,
-            capacityAvailable,
-            priceAdult,
-            priceChild,
-            currency,
-            status: 'AVAILABLE',
           },
         });
+
+        if (duplicateCheck) {
+          // Si se creó una expedición mientras procesábamos, usar esa
+          expedition = duplicateCheck;
+        } else {
+          // Crear la expedición automáticamente
+          expedition = await tx.expedition.create({
+            data: {
+              idTrip: input.idTrip,
+              startDate: input.startDate,
+              endDate: input.endDate,
+              capacityTotal,
+              capacityAvailable,
+              priceAdult,
+              priceChild,
+              currency,
+              status: 'AVAILABLE',
+            },
+          });
+        }
       }
 
-      // Verificar que la expedición tenga cupos suficientes
-      if (expedition.capacityAvailable < seats) {
-        throw new BadRequestException('No hay cupos suficientes en esta fecha');
+      // Recalcular capacidad disponible basada SOLO en reservas CONFIRMED
+      // El campo capacityAvailable puede estar desactualizado si hay reservas PENDING
+      const confirmedBookingsForExpedition = await tx.booking.findMany({
+        where: {
+          idExpedition: expedition.idExpedition,
+          status: 'CONFIRMED', // Solo reservas confirmadas cuentan
+        },
+        include: {
+          bookingItems: true,
+        },
+      });
+
+      const bookedSeatsFromConfirmed = confirmedBookingsForExpedition.reduce((total, booking) => {
+        return (
+          total +
+          booking.bookingItems.reduce((sum, item) => sum + item.quantity, 0)
+        );
+      }, 0);
+
+      const realCapacityAvailable = Math.max(0, expedition.capacityTotal - bookedSeatsFromConfirmed);
+
+      // Verificar que la expedición tenga cupos suficientes (basado en reservas CONFIRMED)
+      if (realCapacityAvailable < seats) {
+        throw new BadRequestException(
+          `No hay cupos suficientes. Disponibles: ${realCapacityAvailable}, Solicitados: ${seats}`,
+        );
       }
 
       if (expedition.status !== 'AVAILABLE') {
         throw new BadRequestException('Esta fecha no está disponible para compras');
       }
 
+      // Actualizar capacityAvailable basado en el cálculo real (solo CONFIRMED)
+      // Esto asegura que el campo esté sincronizado con las reservas confirmadas
+      const newCapacityAvailable = realCapacityAvailable - seats;
+      
       // Decremento atómico de cupos (evita oversell)
       const updatedExpedition = await tx.expedition.update({
         where: { idExpedition: expedition.idExpedition },
-        data: { capacityAvailable: { decrement: seats } },
+        data: { 
+          capacityAvailable: newCapacityAvailable, // Usar el valor calculado, no decrement
+        },
       });
 
       if (updatedExpedition.capacityAvailable < 0) {
@@ -254,13 +304,22 @@ export class CreateBookingFromTripUseCase {
       // Generar referencia única para Wompi
       const wompiReference = this.wompiService.generateReference(booking.idBooking.toString());
 
+      // Construir redirectUrl: si no se proporciona, usar el por defecto con la referencia
+      // Wompi agregará automáticamente el parámetro 'id' con el transaction ID
+      // NOTA: En sandbox, Wompi puede bloquear localhost. Si hay problemas, usar una URL pública o omitir redirectUrl
+      const redirectUrl =
+        input.redirectUrl ||
+        (process.env.FRONTEND_URL
+          ? `${process.env.FRONTEND_URL}/customers/trip?reference=${encodeURIComponent(wompiReference)}&bookingId=${booking.idBooking.toString()}`
+          : `https://187c24719bf7.ngrok-free.app/customers/trip?reference=${encodeURIComponent(wompiReference)}&bookingId=${booking.idBooking.toString()}`);
+
       // Generar link de pago (Web Checkout). La transacción se crea cuando el usuario paga en Wompi.
       const wompiPaymentLink = this.wompiService.buildCheckoutLink({
         amount: totalNumber,
         currency: expedition.currency,
         customerEmail: input.userEmail,
         reference: wompiReference,
-        redirectUrl: input.redirectUrl,
+        redirectUrl,
       });
 
       // Guardar referencia para trazabilidad (transactionId se obtiene luego desde el redirect o verificación)

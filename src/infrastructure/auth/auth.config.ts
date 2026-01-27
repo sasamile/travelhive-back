@@ -3,6 +3,7 @@ import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { createAuthMiddleware, APIError } from 'better-auth/api';
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
 
 // Función para crear la instancia de auth desde PrismaService de NestJS
 export const createAuthInstance = (prisma: PrismaClient) => {
@@ -42,6 +43,13 @@ export const createAuthInstance = (prisma: PrismaClient) => {
     } : undefined,
     baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3000',
     secret: process.env.BETTER_AUTH_SECRET || process.env.JWT_SECRET || 'your-secret-key-change-in-production',
+    trustedOrigins: [
+      process.env.BETTER_AUTH_URL || 'http://localhost:3000',
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'https://187c24719bf7.ngrok-free.app',
+      ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+    ],
     advanced: {
       disableOriginCheck: true, // Desactiva la validación de Origin (útil para Postman y desarrollo)
       disableCSRFCheck: true, // Desactiva verificaciones CSRF (necesario cuando disableOriginCheck está activo)

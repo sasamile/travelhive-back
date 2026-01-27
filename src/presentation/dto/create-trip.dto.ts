@@ -209,4 +209,41 @@ export class CreateTripDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  // Códigos de descuento para el viaje
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DiscountCodeDto)
+  @IsOptional()
+  discountCodes?: DiscountCodeDto[];
+
+  // Promoter/Influencer asociado
+  @IsString()
+  @IsOptional()
+  promoterCode?: string; // Código del promoter (si existe)
+
+  @IsString()
+  @IsOptional()
+  promoterName?: string; // Nombre del promoter (si se crea uno nuevo)
+}
+
+export class DiscountCodeDto {
+  @IsString()
+  @IsNotEmpty()
+  code: string; // Nombre del código (ej: "SUMMER2024")
+
+  @IsNumber()
+  @Min(0)
+  @IsNotEmpty()
+  percentage: number; // Porcentaje de descuento (ej: 10 para 10%)
+
+  @IsNumber()
+  @IsOptional()
+  @Min(1)
+  maxUses?: number; // Máximo número de usos (opcional)
+
+  @IsNumber()
+  @IsOptional()
+  @Min(1)
+  perUserLimit?: number; // Límite de usos por usuario (opcional)
 }

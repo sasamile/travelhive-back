@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, Session, HttpCode, HttpStatus, NotFoundException, BadRequestException, Query } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, Session, HttpCode, HttpStatus, NotFoundException, BadRequestException, Query, Logger } from '@nestjs/common';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
 import { CreateBookingUseCase } from '../../application/use-cases/booking/create-booking-use-case';
 import { CreateBookingFromTripUseCase } from '../../application/use-cases/booking/create-booking-from-trip-use-case';
@@ -11,6 +11,8 @@ import { WompiService } from '../../config/payments/wompi.service';
 
 @Controller('bookings')
 export class BookingController {
+  private readonly logger = new Logger(BookingController.name);
+
   constructor(
     private readonly createBookingUseCase: CreateBookingUseCase,
     private readonly createBookingFromTripUseCase: CreateBookingFromTripUseCase,
@@ -65,14 +67,35 @@ export class BookingController {
   }
 
   /**
-   * Listar mis reservas
+   * Listar mis reservas como cliente/viajero
+   * Permite filtrar por:
+   * - filter: 'all' | 'upcoming' | 'history' (próximos o historial)
+   * - search: nombre del viaje para buscar
+   * 
+   * Ejemplos:
+   * GET /bookings?filter=upcoming - Solo próximos viajes
+   * GET /bookings?filter=history - Solo historial
+   * GET /bookings?search=islandia - Buscar por nombre
+   * GET /bookings?filter=upcoming&search=aventura - Próximos que contengan "aventura"
    */
   @Get()
-  async listMyBookings(@Session() session: UserSession) {
-    const result = await this.listMyBookingsUseCase.execute(session.user.id);
+  async listMyBookings(
+    @Session() session: UserSession,
+    @Query('filter') filter?: string,
+    @Query('search') search?: string,
+  ) {
+    const result = await this.listMyBookingsUseCase.execute({
+      userId: session.user.id,
+      filter: filter as any,
+      search,
+    });
     return {
       bookings: result.data,
-      total: result.data.length,
+      upcoming: result.upcoming,
+      history: result.history,
+      total: result.total,
+      upcomingCount: result.upcomingCount,
+      historyCount: result.historyCount,
     };
   }
 
@@ -152,6 +175,10 @@ export class BookingController {
   /**
    * Verificar y actualizar el estado del pago de una reserva
    * Consulta el estado en Wompi y actualiza el booking si es necesario
+   * 
+   * Puede recibir:
+   * - transactionId: ID de la transacción de Wompi (desde redirect o manual)
+   * - reference: Referencia de Wompi (útil si el redirect no funciona)
    */
   @Post(':id/verify-payment')
   async verifyPayment(
@@ -159,7 +186,8 @@ export class BookingController {
     @Param('id') id: string,
     @Query('transactionId') transactionIdQuery?: string,
     @Query('id') wompiRedirectIdQuery?: string,
-    @Body() body?: { transactionId?: string },
+    @Query('reference') referenceQuery?: string,
+    @Body() body?: { transactionId?: string; reference?: string },
   ) {
     const bookingId = BigInt(id);
 
@@ -177,20 +205,38 @@ export class BookingController {
     }
 
     const providedTransactionId = body?.transactionId || transactionIdQuery || wompiRedirectIdQuery;
+    const providedReference = body?.reference || referenceQuery || booking.referenceBuy;
 
-    // Si aún no tenemos transactionId guardado, pero viene desde el redirect o el frontend lo envía, lo persistimos
-    if (!booking.transactionId && providedTransactionId) {
-      await this.prisma.booking.update({
-        where: { idBooking: bookingId },
-        data: { transactionId: providedTransactionId },
-      });
-      booking.transactionId = providedTransactionId;
+    // Si aún no tenemos transactionId guardado, intentar obtenerlo
+    if (!booking.transactionId) {
+      if (providedTransactionId) {
+        // Si viene el transactionId directamente, guardarlo
+        await this.prisma.booking.update({
+          where: { idBooking: bookingId },
+          data: { transactionId: providedTransactionId },
+        });
+        booking.transactionId = providedTransactionId;
+      } else if (providedReference) {
+        // Si no hay transactionId pero tenemos la referencia, buscar la transacción en Wompi
+        try {
+          const wompiResponse = await this.wompiService.getTransactionByReference(providedReference);
+          if (wompiResponse && wompiResponse.data.id) {
+            await this.prisma.booking.update({
+              where: { idBooking: bookingId },
+              data: { transactionId: wompiResponse.data.id },
+            });
+            booking.transactionId = wompiResponse.data.id;
+          }
+        } catch (error: any) {
+          this.logger.warn(`No se pudo obtener transactionId desde referencia: ${providedReference}`);
+        }
+      }
     }
 
-    // Si no tiene transactionId, no se puede verificar
+    // Si aún no tiene transactionId, no se puede verificar
     if (!booking.transactionId) {
       throw new BadRequestException(
-        'Esta reserva no tiene una transacción de Wompi asociada. Envía transactionId (o el query "id" que devuelve Wompi en el redirect-url).',
+        'Esta reserva no tiene una transacción de Wompi asociada. Envía transactionId o reference (que aparece en la página de confirmación de Wompi).',
       );
     }
 

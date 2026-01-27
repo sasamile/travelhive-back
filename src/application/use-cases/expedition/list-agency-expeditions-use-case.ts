@@ -182,22 +182,42 @@ export class ListAgencyExpeditionsUseCase {
     }
 
     // Obtener expediciones
-    const [expeditions, expeditionsTotal] = await Promise.all([
+    const [expeditionsRaw, expeditionsTotal] = await Promise.all([
       this.prisma.expedition.findMany({
         where: whereClause,
-        include: {
+        select: {
+          idExpedition: true,
+          idTrip: true,
+          startDate: true,
+          endDate: true,
+          capacityTotal: true,
+          capacityAvailable: true,
+          currency: true,
+          status: true,
           trip: {
-            include: {
-              city: true,
+            select: {
+              idTrip: true,
+              title: true,
+              isActive: true,
+              status: true,
+              coverImage: true,
+              city: {
+                select: {
+                  nameCity: true,
+                },
+              },
               galleryImages: {
                 orderBy: { order: 'asc' },
                 take: 1,
+                select: {
+                  imageUrl: true,
+                },
               },
             },
           },
           bookings: {
             where: {
-              status: 'CONFIRMED',
+              status: 'CONFIRMED', // Solo contar reservas confirmadas
             },
             select: {
               totalBuy: true,
@@ -210,13 +230,24 @@ export class ListAgencyExpeditionsUseCase {
           },
         },
         orderBy: { startDate: 'desc' },
-        skip,
-        take: limit,
+        // No usar skip/take aquí, lo haremos después de eliminar duplicados
       }),
       this.prisma.expedition.count({
         where: whereClause,
       }),
     ]);
+
+    // Eliminar duplicados por idExpedition (por si acaso hay duplicados en la BD)
+    const expeditionsMap = new Map<string, any>();
+    expeditionsRaw.forEach((exp) => {
+      const key = exp.idExpedition.toString();
+      if (!expeditionsMap.has(key)) {
+        expeditionsMap.set(key, exp);
+      }
+    });
+    const expeditions = Array.from(expeditionsMap.values())
+      .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
+      .slice(skip, skip + limit);
 
     // Si no hay filtro de "completed" y hay espacio, obtener trips sin expediciones
     let tripsWithoutExpeditions: any[] = [];
@@ -232,11 +263,27 @@ export class ListAgencyExpeditionsUseCase {
               none: {},
             },
           },
-          include: {
-            city: true,
+          select: {
+            idTrip: true,
+            title: true,
+            isActive: true,
+            status: true,
+            coverImage: true,
+            startDate: true,
+            endDate: true,
+            durationDays: true,
+            maxPersons: true,
+            city: {
+              select: {
+                nameCity: true,
+              },
+            },
             galleryImages: {
               orderBy: { order: 'asc' },
               take: 1,
+              select: {
+                imageUrl: true,
+              },
             },
           },
           orderBy: { createdAt: 'desc' },
@@ -256,10 +303,11 @@ export class ListAgencyExpeditionsUseCase {
     const total = expeditionsTotal + tripsWithoutExpeditionsTotal;
 
     // Transformar expediciones al formato requerido
+    // Nota: Ya eliminamos duplicados arriba, así que expeditions ya está sin duplicados
     const expeditionsData: ExpeditionWithDetails[] = expeditions.map((expedition) => {
-      // Calcular ocupación desde bookings confirmados
+      // Calcular ocupación SOLO desde bookings CONFIRMED (no PENDING)
       const confirmedBookings = expedition.bookings || [];
-      const totalBooked = confirmedBookings.reduce((sum, booking) => {
+      const totalBookedFromConfirmed = confirmedBookings.reduce((sum, booking) => {
         const bookingQuantity = booking.bookingItems.reduce(
           (itemSum, item) => itemSum + item.quantity,
           0,
@@ -267,8 +315,9 @@ export class ListAgencyExpeditionsUseCase {
         return sum + bookingQuantity;
       }, 0);
 
-      // La ocupación actual es la capacidad total menos la disponible
-      const currentOccupancy = expedition.capacityTotal - expedition.capacityAvailable;
+      // La ocupación actual debe ser SOLO las reservas CONFIRMED
+      // No usar capacityAvailable porque incluye reservas PENDING que pueden cancelarse
+      const currentOccupancy = totalBookedFromConfirmed;
       const occupancy = {
         current: Math.max(0, currentOccupancy), // Asegurar que no sea negativo
         total: expedition.capacityTotal,
@@ -312,11 +361,14 @@ export class ListAgencyExpeditionsUseCase {
       } else if (expedition.status === ExpeditionStatus.CANCELLED) {
         status = 'CANCELADA';
         statusColor = 'bg-red-50 text-red-600 border-red-100';
-      } else if (occupancy.percentage === 100) {
-        status = 'LISTA DE ESPERA';
-        statusColor = 'bg-amber-50 text-amber-600 border-amber-100';
       } else if (expedition.status === ExpeditionStatus.FULL) {
+        // Si el estado en BD es FULL, mostrar "LLENA"
         status = 'LLENA';
+        statusColor = 'bg-amber-50 text-amber-600 border-amber-100';
+      } else if (occupancy.percentage >= 100) {
+        // LISTA DE ESPERA: Solo cuando hay 100% de ocupación pero el estado aún no se actualizó a FULL
+        // Esto puede pasar temporalmente hasta que el cron job actualice el estado
+        status = 'LISTA DE ESPERA';
         statusColor = 'bg-amber-50 text-amber-600 border-amber-100';
       } else if (startDate <= now && endDate >= now) {
         status = 'ACTIVA';

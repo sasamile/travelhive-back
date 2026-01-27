@@ -38,6 +38,7 @@ export class TripRepository implements ITripRepository {
         status: (trip.status || TripStatus.DRAFT) as any,
         isActive: trip.isActive ?? true,
         publishedAt: trip.publishedAt,
+        idPromoter: trip.idPromoter,
         routePoints: trip.routePoints
           ? {
               create: trip.routePoints.map((rp) => ({
@@ -96,7 +97,32 @@ export class TripRepository implements ITripRepository {
   async findById(id: bigint): Promise<Trip | null> {
     const trip = await this.prisma.trip.findUnique({
       where: { idTrip: id },
-      include: {
+      select: {
+        idTrip: true,
+        idAgency: true,
+        idCity: true,
+        title: true,
+        description: true,
+        category: true,
+        destinationRegion: true,
+        latitude: true,
+        longitude: true,
+        startDate: true,
+        endDate: true,
+        durationDays: true,
+        durationNights: true,
+        price: true,
+        currency: true,
+        priceType: true,
+        maxPersons: true,
+        coverImage: true,
+        coverImageIndex: true,
+        status: true,
+        isActive: true,
+        publishedAt: true,
+        idPromoter: true,
+        createdAt: true,
+        updatedAt: true,
         routePoints: true,
         galleryImages: true,
         itineraryDays: {
@@ -306,11 +332,18 @@ export class TripRepository implements ITripRepository {
     // Si ya se filtró por idCity arriba, ese filtro ya cubre el destino
     // Si se quiere filtrar también por RoutePoint, se puede agregar lógica adicional aquí
 
-    // Si hay filtros de fecha o personas, necesitamos filtrar por expeditions
+    // IMPORTANTE: Filtrar trips que tengan al menos una expedición con cupo disponible
+    // O que no tengan expediciones (se crearán al reservar)
+    // NO mostrar trips que solo tienen expediciones llenas
+    // El filtro en el mapeo se encargará de excluir trips con todas las expediciones llenas
     if (filters.startDate || filters.endDate || filters.persons) {
+      // Si hay filtros de fecha/personas, también requerir expediciones con cupo disponible que cumplan los filtros
       whereConditions.expeditions = {
         some: {
-          status: 'AVAILABLE',
+          status: 'AVAILABLE', // Solo expediciones disponibles (no FULL, no COMPLETED, no CANCELLED)
+          capacityAvailable: {
+            gt: 0, // Debe tener cupo disponible (mayor que 0)
+          },
           ...(filters.startDate && {
             startDate: {
               gte: filters.startDate,
@@ -323,7 +356,7 @@ export class TripRepository implements ITripRepository {
           }),
           ...(filters.persons && {
             capacityAvailable: {
-              gte: filters.persons,
+              gte: filters.persons, // Si hay filtro de personas, debe tener al menos ese cupo
             },
           }),
         },
@@ -378,7 +411,11 @@ export class TripRepository implements ITripRepository {
         },
         expeditions: {
           where: {
-            status: 'AVAILABLE',
+            // Incluir TODAS las expediciones para poder verificar si están llenas
+            // Filtrar después en el mapeo para mostrar solo las disponibles
+            status: {
+              in: ['AVAILABLE', 'FULL'], // Incluir FULL para poder detectarlas
+            },
             ...(filters.startDate && {
               startDate: {
                 gte: filters.startDate,
@@ -389,16 +426,11 @@ export class TripRepository implements ITripRepository {
                 lte: filters.endDate,
               },
             }),
-            ...(filters.persons && {
-              capacityAvailable: {
-                gte: filters.persons,
-              },
-            }),
           },
           orderBy: {
             startDate: 'asc',
           },
-          take: 5, // Limitar a 5 próximas expediciones disponibles
+          take: 10, // Traer más para verificar todas
         },
       },
       orderBy: {
@@ -408,29 +440,105 @@ export class TripRepository implements ITripRepository {
       take: limit,
     });
 
-    // Mapear trips incluyendo agency y city (que no están en la entidad Trip)
-    const mappedTrips = trips.map((trip) => {
-      const tripEntity = this.mapToEntity(trip);
-      return {
-        ...tripEntity,
-        // Incluir datos adicionales de agency y city
-        agency: trip.agency,
-        city: trip.city,
-        expeditions: trip.expeditions.map((exp) => ({
-          ...exp,
-          idExpedition: exp.idExpedition.toString(),
-          priceAdult: Number(exp.priceAdult),
-          priceChild: exp.priceChild ? Number(exp.priceChild) : null,
-        })),
-      };
+    // Consultar todas las expediciones de los trips para verificar si están llenas
+    // Esto es más eficiente que consultar dentro del map
+    const tripIds = trips.map((t) => t.idTrip);
+    const allExpeditions = await this.prisma.expedition.findMany({
+      where: {
+        idTrip: { in: tripIds },
+      },
+      select: {
+        idTrip: true,
+        status: true,
+        capacityAvailable: true,
+      },
     });
+
+    // Agrupar expediciones por trip y verificar si todas están llenas
+    const tripsWithOnlyFullExpeditions = new Set<bigint>();
+    const expeditionsByTrip = new Map<bigint, typeof allExpeditions>();
+    
+    for (const exp of allExpeditions) {
+      if (!expeditionsByTrip.has(exp.idTrip)) {
+        expeditionsByTrip.set(exp.idTrip, []);
+      }
+      expeditionsByTrip.get(exp.idTrip)!.push(exp);
+    }
+
+    // Verificar para cada trip si todas sus expediciones están llenas
+    for (const [tripId, tripExpeditions] of expeditionsByTrip.entries()) {
+      if (tripExpeditions.length > 0) {
+        const allFull = tripExpeditions.every(
+          (exp) =>
+            exp.status === 'FULL' ||
+            exp.status === 'COMPLETED' ||
+            exp.status === 'CANCELLED' ||
+            exp.capacityAvailable === 0,
+        );
+        if (allFull) {
+          tripsWithOnlyFullExpeditions.add(tripId);
+        }
+      }
+    }
+
+    // Mapear trips incluyendo agency y city
+    // IMPORTANTE: 
+    // - Mostrar trips sin expediciones (se crearán al reservar)
+    // - Mostrar trips con al menos una expedición con cupo disponible
+    // - NO mostrar trips que solo tienen expediciones llenas
+    const mappedTrips = trips
+      .map((trip) => {
+        // NO mostrar el trip si todas sus expediciones están llenas
+        if (tripsWithOnlyFullExpeditions.has(trip.idTrip)) {
+          return null;
+        }
+
+        const tripEntity = this.mapToEntity(trip);
+        
+        // Filtrar expediciones que tengan cupo disponible (capacityAvailable > 0)
+        // Y que no estén en estado FULL o COMPLETED
+        const availableExpeditions = trip.expeditions
+          .filter((exp) => {
+            // Excluir expediciones llenas o completadas
+            if (exp.status === 'FULL' || exp.status === 'COMPLETED' || exp.status === 'CANCELLED') {
+              return false;
+            }
+            // Solo incluir expediciones con cupo disponible
+            return exp.capacityAvailable > 0;
+          })
+          .filter((exp) => {
+            // Aplicar filtro de personas si existe
+            if (filters.persons) {
+              return exp.capacityAvailable >= filters.persons;
+            }
+            return true;
+          })
+          .map((exp) => ({
+            ...exp,
+            idExpedition: exp.idExpedition.toString(),
+            priceAdult: Number(exp.priceAdult),
+            priceChild: exp.priceChild ? Number(exp.priceChild) : null,
+          }));
+
+        // Mostrar el trip si:
+        // - No tiene expediciones (se crearán al reservar), O
+        // - Tiene al menos una expedición con cupo disponible
+        return {
+          ...tripEntity,
+          // Incluir datos adicionales de agency y city
+          agency: trip.agency,
+          city: trip.city,
+          expeditions: availableExpeditions, // Solo expediciones con cupo disponible (o vacío si no tiene)
+        };
+      })
+      .filter((trip) => trip !== null) as Array<ReturnType<typeof this.mapToEntity> & { agency: any; city: any; expeditions: any[] }>;
 
     return {
       trips: mappedTrips,
-      total,
+      total: mappedTrips.length, // Total ajustado después de filtrar
       page,
       limit,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.ceil(mappedTrips.length / limit),
     };
   }
 
@@ -535,6 +643,7 @@ export class TripRepository implements ITripRepository {
       status: prismaTrip.status as TripStatus,
       isActive: prismaTrip.isActive ?? true,
       publishedAt: prismaTrip.publishedAt ? new Date(prismaTrip.publishedAt) : undefined,
+      idPromoter: prismaTrip.idPromoter ? BigInt(prismaTrip.idPromoter) : undefined,
       createdAt: prismaTrip.createdAt ? new Date(prismaTrip.createdAt) : new Date(),
       updatedAt: prismaTrip.updatedAt ? new Date(prismaTrip.updatedAt) : new Date(),
       routePoints: prismaTrip.routePoints

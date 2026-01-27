@@ -103,6 +103,10 @@ export class WompiService {
   /**
    * Construye un link de pago para Web Checkout.
    * Nota: este link NO crea la transacción inmediatamente; Wompi crea la transacción cuando el usuario paga.
+   * 
+   * IMPORTANTE: Construimos la URL manualmente porque URLSearchParams codifica los dos puntos (:)
+   * y Wompi requiere que parámetros como 'signature:integrity' y 'customer-data:email' 
+   * tengan los dos puntos sin codificar.
    */
   buildCheckoutLink(params: {
     amount: number;
@@ -125,19 +129,46 @@ export class WompiService {
       expirationTime: params.expirationTime,
     });
 
-    const qs = new URLSearchParams();
-    qs.set('public-key', this.publicKey);
-    qs.set('currency', currency);
-    qs.set('amount-in-cents', String(amountInCents));
-    qs.set('reference', params.reference);
-    qs.set('signature:integrity', integrity);
+    // Construir parámetros manualmente para evitar codificación de los dos puntos en nombres de parámetros
+    // Wompi requiere que 'signature:integrity' y 'customer-data:email' tengan los dos puntos sin codificar
+    // NOTA: Si redirectUrl contiene localhost y causa problemas, se puede omitir (Wompi redirigirá a su página de éxito)
+    const queryParams: string[] = [];
+    
+    // Parámetros requeridos (codificar valores pero NO los dos puntos en nombres)
+    queryParams.push(`public-key=${encodeURIComponent(this.publicKey)}`);
+    queryParams.push(`currency=${encodeURIComponent(currency)}`);
+    queryParams.push(`amount-in-cents=${encodeURIComponent(String(amountInCents))}`);
+    queryParams.push(`reference=${encodeURIComponent(params.reference)}`);
+    // IMPORTANTE: Los dos puntos en 'signature:integrity' NO deben codificarse
+    queryParams.push(`signature:integrity=${encodeURIComponent(integrity)}`);
 
-    // Opcionales (pre-fill)
-    if (params.redirectUrl) qs.set('redirect-url', params.redirectUrl);
-    if (params.expirationTime) qs.set('expiration-time', params.expirationTime);
-    if (params.customerEmail) qs.set('customer-data:email', params.customerEmail);
+    // Parámetros opcionales
+    // En sandbox, Wompi debería permitir localhost. Si hay problemas, se puede deshabilitar con WOMPI_ALLOW_LOCALHOST_REDIRECT=false
+    if (params.redirectUrl) {
+      const isLocalhost = params.redirectUrl.includes('localhost') || params.redirectUrl.includes('127.0.0.1');
+      const allowLocalhost = process.env.WOMPI_ALLOW_LOCALHOST_REDIRECT !== 'false'; // Por defecto: permitir localhost
+      
+      if (!isLocalhost || allowLocalhost) {
+        queryParams.push(`redirect-url=${encodeURIComponent(params.redirectUrl)}`);
+        this.logger.debug(`Redirect URL incluido en checkout: ${params.redirectUrl}`);
+      } else {
+        this.logger.warn(
+          `Redirect URL con localhost omitido. Para habilitarlo, setea WOMPI_ALLOW_LOCALHOST_REDIRECT=true en .env o elimina la variable`,
+        );
+      }
+    } else {
+      this.logger.warn('No se proporcionó redirectUrl. El usuario deberá verificar el pago manualmente.');
+    }
+    
+    if (params.expirationTime) {
+      queryParams.push(`expiration-time=${encodeURIComponent(params.expirationTime)}`);
+    }
+    if (params.customerEmail) {
+      // IMPORTANTE: Los dos puntos en 'customer-data:email' NO deben codificarse
+      queryParams.push(`customer-data:email=${encodeURIComponent(params.customerEmail)}`);
+    }
 
-    return `${this.checkoutBaseUrl}?${qs.toString()}`;
+    return `${this.checkoutBaseUrl}?${queryParams.join('&')}`;
   }
 
   /**
@@ -191,7 +222,7 @@ export class WompiService {
   }
 
   /**
-   * Obtiene el estado de una transacción
+   * Obtiene el estado de una transacción por ID
    */
   async getTransaction(transactionId: string): Promise<WompiTransactionResponse> {
     if (!this.privateKey) {
@@ -214,6 +245,47 @@ export class WompiService {
     } catch (error: any) {
       this.logger.error('Exception getting Wompi transaction:', error);
       throw new BadRequestException(`Error al comunicarse con Wompi: ${error.message}`);
+    }
+  }
+
+  /**
+   * Busca una transacción por referencia
+   * Útil cuando el redirect no funciona y el usuario tiene la referencia de la página de Wompi
+   */
+  async getTransactionByReference(reference: string): Promise<WompiTransactionResponse | null> {
+    if (!this.privateKey) {
+      throw new BadRequestException('Wompi no está configurado');
+    }
+
+    try {
+      // Wompi permite buscar transacciones por referencia usando query parameter
+      const response = await fetch(`${this.baseUrl}/transactions?reference=${encodeURIComponent(reference)}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${this.privateKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        this.logger.warn(`No se encontró transacción con referencia: ${reference}`);
+        return null;
+      }
+
+      const data = await response.json();
+      
+      // La respuesta puede ser un array o un objeto con data
+      if (Array.isArray(data) && data.length > 0) {
+        return { data: data[0] } as WompiTransactionResponse;
+      } else if (data.data) {
+        return data as WompiTransactionResponse;
+      } else if (data.id) {
+        return { data } as WompiTransactionResponse;
+      }
+
+      return null;
+    } catch (error: any) {
+      this.logger.error('Exception getting Wompi transaction by reference:', error);
+      return null;
     }
   }
 

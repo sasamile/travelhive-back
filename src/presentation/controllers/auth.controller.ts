@@ -1,5 +1,5 @@
-import { Controller, Body, Get, Patch, Post, Delete, Param, UseInterceptors, UploadedFile, Req, NotFoundException, ForbiddenException } from '@nestjs/common';
-import type { Request } from 'express';
+import { Controller, Body, Get, Patch, Post, Delete, Param, UseInterceptors, UploadedFile, Req, NotFoundException, ForbiddenException, Query, Res } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { Session, AllowAnonymous } from '@thallesp/nestjs-better-auth';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
 import { PrismaService } from '../../infrastructure/database/prisma/prisma.service';
@@ -160,6 +160,23 @@ export class AuthController {
       timestamp: new Date().toISOString(),
       status: 'ok',
     };
+  }
+
+  /**
+   * Maneja errores de OAuth y redirige al frontend
+   * Este endpoint captura errores de Better Auth (como state_mismatch) y los redirige al frontend
+   */
+  @Get('oauth-error')
+  @AllowAnonymous()
+  async handleOAuthError(
+    @Query('error') error: string,
+    @Res() res: Response,
+  ) {
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const errorParam = error || 'unknown_error';
+    const redirectUrl = `${frontendUrl}/auth/error?error=${encodeURIComponent(errorParam)}`;
+    
+    return res.redirect(redirectUrl);
   }
 
   @Patch('me')

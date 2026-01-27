@@ -23,6 +23,7 @@ import { RegisterAgencyUseCase } from '../../application/use-cases/auth/register
 import { CreateTripUseCase } from '../../application/use-cases/trip/create-trip-use-case';
 import { ListTripsUseCase } from '../../application/use-cases/trip/list-trips-use-case';
 import { GetTripByIdUseCase } from '../../application/use-cases/trip/get-trip-by-id-use-case';
+import { GetTripStatsUseCase } from '../../application/use-cases/trip/get-trip-stats-use-case';
 import { UpdateTripUseCase } from '../../application/use-cases/trip/update-trip-use-case';
 import { DeleteTripUseCase } from '../../application/use-cases/trip/delete-trip-use-case';
 import { ChangeTripStatusUseCase } from '../../application/use-cases/trip/change-trip-status-use-case';
@@ -30,6 +31,8 @@ import { ToggleTripActiveUseCase } from '../../application/use-cases/trip/toggle
 import { CreateExpeditionUseCase } from '../../application/use-cases/expedition/create-expedition-use-case';
 import { ListExpeditionsUseCase } from '../../application/use-cases/expedition/list-expeditions-use-case';
 import { ListAgencyExpeditionsUseCase } from '../../application/use-cases/expedition/list-agency-expeditions-use-case';
+import { UpdateExpeditionUseCase } from '../../application/use-cases/expedition/update-expedition-use-case';
+import { DeleteExpeditionUseCase } from '../../application/use-cases/expedition/delete-expedition-use-case';
 import { RegisterAgencyDto } from '../dto/register-agency.dto';
 import { CreateTripDto } from '../dto/create-trip.dto';
 import { UpdateTripDto } from '../dto/update-trip.dto';
@@ -37,6 +40,7 @@ import { ChangeTripStatusDto } from '../dto/change-trip-status.dto';
 import { ToggleTripActiveDto } from '../dto/toggle-trip-active.dto';
 import { CreateExpeditionDto } from '../dto/create-expedition.dto';
 import { ListExpeditionsDto } from '../dto/list-expeditions.dto';
+import { UpdateExpeditionDto } from '../dto/update-expedition.dto';
 import { S3Service } from '../../config/storage/s3.service';
 import { PrismaService } from '../../infrastructure/database/prisma/prisma.service';
 import { UpdateAgencyUseCase } from '../../application/use-cases/agency/update-agency-use-case';
@@ -50,6 +54,8 @@ import { ChangeAgencyMemberPasswordUseCase } from '../../application/use-cases/a
 import { ListAgencyMembersUseCase } from '../../application/use-cases/agency/list-agency-members-use-case';
 import { CreateBookingUseCase } from '../../application/use-cases/booking/create-booking-use-case';
 import { ListMyBookingsUseCase } from '../../application/use-cases/booking/list-my-bookings-use-case';
+import { ListAgencyBookingsUseCase } from '../../application/use-cases/booking/list-agency-bookings-use-case';
+import { GetAgencyInsightsUseCase } from '../../application/use-cases/agency/get-agency-insights-use-case';
 import { UpdateAgencyDto } from '../dto/update-agency.dto';
 import { CreateBookingDto } from '../dto/create-booking.dto';
 import { CreateAgencyMemberDto } from '../dto/create-agency-member.dto';
@@ -65,6 +71,7 @@ export class AgencyController {
     private readonly s3Service: S3Service,
     private readonly listTripsUseCase: ListTripsUseCase,
     private readonly getTripByIdUseCase: GetTripByIdUseCase,
+    private readonly getTripStatsUseCase: GetTripStatsUseCase,
     private readonly updateTripUseCase: UpdateTripUseCase,
     private readonly deleteTripUseCase: DeleteTripUseCase,
     private readonly changeTripStatusUseCase: ChangeTripStatusUseCase,
@@ -72,6 +79,8 @@ export class AgencyController {
     private readonly createExpeditionUseCase: CreateExpeditionUseCase,
     private readonly listExpeditionsUseCase: ListExpeditionsUseCase,
     private readonly listAgencyExpeditionsUseCase: ListAgencyExpeditionsUseCase,
+    private readonly updateExpeditionUseCase: UpdateExpeditionUseCase,
+    private readonly deleteExpeditionUseCase: DeleteExpeditionUseCase,
     private readonly prisma: PrismaService,
     private readonly updateAgencyUseCase: UpdateAgencyUseCase,
     private readonly createAgencyMemberUseCase: CreateAgencyMemberUseCase,
@@ -84,6 +93,8 @@ export class AgencyController {
     private readonly listAgencyMembersUseCase: ListAgencyMembersUseCase,
     private readonly createBookingUseCase: CreateBookingUseCase,
     private readonly listMyBookingsUseCase: ListMyBookingsUseCase,
+    private readonly listAgencyBookingsUseCase: ListAgencyBookingsUseCase,
+    private readonly getAgencyInsightsUseCase: GetAgencyInsightsUseCase,
   ) {}
 
   /**
@@ -279,6 +290,30 @@ export class AgencyController {
   }
 
   /**
+   * Obtiene estadísticas detalladas de un viaje
+   * Incluye: promoter, estadísticas mensuales, códigos de descuento, ganancias e historial de reservas
+   * 
+   * Ejemplo:
+   * GET /agencies/trips/123456789/stats
+   */
+  @Get('trips/:tripId/stats')
+  async getTripStats(
+    @Param('tripId') tripId: string,
+    @Session() session: UserSession,
+  ) {
+    // Obtener la agencia del usuario desde la sesión
+    const agencyId = await this.getUserAgencyId(session.user.id);
+    
+    const stats = await this.getTripStatsUseCase.execute({
+      tripId: BigInt(tripId),
+      agencyId,
+      userId: session.user.id,
+    });
+
+    return stats;
+  }
+
+  /**
    * Actualiza un trip existente de la agencia del usuario
    * Acepta imágenes en el campo 'galleryImages' (múltiples archivos)
    * La agencia se obtiene automáticamente de la sesión del usuario
@@ -461,6 +496,55 @@ export class AgencyController {
   }
 
   /**
+   * Actualiza una expedición existente
+   * IMPORTANTE: Solo bloquea edición si hay reservas CONFIRMED, no PENDING
+   * Las reservas PENDING no bloquean porque el pago no se completó
+   */
+  @Patch('trips/:tripId/expeditions/:expeditionId')
+  async updateExpedition(
+    @Param('tripId') tripId: string,
+    @Param('expeditionId') expeditionId: string,
+    @Body() dto: UpdateExpeditionDto,
+    @Session() session: UserSession,
+  ) {
+    const expedition = await this.updateExpeditionUseCase.execute(
+      BigInt(tripId),
+      BigInt(expeditionId),
+      dto,
+      session.user.id,
+    );
+
+    return {
+      message: 'Expedición actualizada exitosamente',
+      data: expedition,
+    };
+  }
+
+  /**
+   * Elimina una expedición
+   * Solo para administradores
+   * Solo permite eliminar expediciones SIN reservas (ni PENDING ni CONFIRMED)
+   * Recomendado: expediciones en borrador, desactivadas o canceladas
+   */
+  @Delete('trips/:tripId/expeditions/:expeditionId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteExpedition(
+    @Param('tripId') tripId: string,
+    @Param('expeditionId') expeditionId: string,
+    @Session() session: UserSession,
+  ) {
+    await this.deleteExpeditionUseCase.execute(
+      BigInt(tripId),
+      BigInt(expeditionId),
+      session.user.id,
+    );
+
+    return {
+      message: 'Expedición eliminada exitosamente',
+    };
+  }
+
+  /**
    * Actualiza la información de la agencia del usuario autenticado.
    * Permisos: roles admin/editor dentro de la agencia.
    */
@@ -518,11 +602,69 @@ export class AgencyController {
   }
 
   /**
-   * Lista las compras del usuario autenticado.
+   * Lista todas las reservas de la agencia del usuario autenticado
+   * Permite filtrar por estado, fechas y buscar por ID de reserva o viajero
+   * Solo usuarios admin o editor pueden acceder
+   * 
+   * Ejemplos:
+   * GET /agencies/bookings - Todas las reservas
+   * GET /agencies/bookings?status=confirmed - Solo confirmadas
+   * GET /agencies/bookings?status=pending - Solo pendientes
+   * GET /agencies/bookings?search=BK-94821 - Buscar por ID
+   * GET /agencies/bookings?search=marcus - Buscar por nombre/email del viajero
+   * GET /agencies/bookings?startDate=2023-10-01&endDate=2023-10-31 - Filtrar por fechas
+   * GET /agencies/bookings?status=confirmed&page=1&limit=10 - Con paginación
    */
   @Get('bookings')
-  async listMyBookings(@Session() session: UserSession) {
-    return await this.listMyBookingsUseCase.execute(session.user.id);
+  async listAgencyBookings(
+    @Session() session: UserSession,
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const agencyId = await this.getUserAgencyId(session.user.id);
+    
+    const result = await this.listAgencyBookingsUseCase.execute({
+      agencyId,
+      userId: session.user.id,
+      status: status as any,
+      search,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+
+    return result;
+  }
+
+  /**
+   * Obtiene análisis e insights de la agencia
+   * Incluye estadísticas, crecimiento de ingresos, destinos top y checklist de optimización
+   * 
+   * Ejemplos:
+   * GET /agencies/insights - Insights de los últimos 6 meses
+   * GET /agencies/insights?startDate=2023-01-01&endDate=2023-12-31 - Insights de un rango específico
+   */
+  @Get('insights')
+  async getAgencyInsights(
+    @Session() session: UserSession,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const agencyId = await this.getUserAgencyId(session.user.id);
+    
+    const result = await this.getAgencyInsightsUseCase.execute({
+      agencyId,
+      userId: session.user.id,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+    });
+
+    return result;
   }
 
   /**
