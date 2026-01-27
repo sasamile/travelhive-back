@@ -36,6 +36,14 @@ import { ListMyBookingsUseCase } from './use-cases/booking/list-my-bookings-use-
 import { ListAgencyBookingsUseCase } from './use-cases/booking/list-agency-bookings-use-case';
 import { UpdateBookingPaymentUseCase } from './use-cases/booking/update-booking-payment-use-case';
 import { CancelPendingBookingUseCase } from './use-cases/booking/cancel-pending-booking-use-case';
+import { ValidateDiscountForTripUseCase } from './use-cases/booking/validate-discount-for-trip-use-case';
+import { RegisterPromoterViewUseCase } from './use-cases/promoter/register-promoter-view-use-case';
+import { ToggleTripFavoriteUseCase } from './use-cases/trip-favorite/toggle-trip-favorite-use-case';
+import { ListMyFavoritesUseCase } from './use-cases/trip-favorite/list-my-favorites-use-case';
+import { CreateTripReviewUseCase } from './use-cases/trip-review/create-trip-review-use-case';
+import { UpdateTripReviewUseCase } from './use-cases/trip-review/update-trip-review-use-case';
+import { DeleteTripReviewUseCase } from './use-cases/trip-review/delete-trip-review-use-case';
+import { ListTripReviewsUseCase } from './use-cases/trip-review/list-trip-reviews-use-case';
 import { BookingCleanupService } from './services/booking-cleanup.service';
 import { ExpeditionStatusUpdateService } from './services/expedition-status-update.service';
 import { InfrastructureModule } from '../infrastructure/infrastructure.module';
@@ -83,6 +91,14 @@ import { PaymentsModule } from '../config/payments/payments.module';
     CancelPendingBookingUseCase,
     BookingCleanupService,
     ExpeditionStatusUpdateService,
+    ValidateDiscountForTripUseCase,
+    RegisterPromoterViewUseCase,
+    ToggleTripFavoriteUseCase,
+    ListMyFavoritesUseCase,
+    CreateTripReviewUseCase,
+    UpdateTripReviewUseCase,
+    DeleteTripReviewUseCase,
+    ListTripReviewsUseCase,
   ],
   exports: [
     RegisterAgencyUseCase,
@@ -124,6 +140,14 @@ import { PaymentsModule } from '../config/payments/payments.module';
     CancelPendingBookingUseCase,
     BookingCleanupService,
     ExpeditionStatusUpdateService,
+    ValidateDiscountForTripUseCase,
+    RegisterPromoterViewUseCase,
+    ToggleTripFavoriteUseCase,
+    ListMyFavoritesUseCase,
+    CreateTripReviewUseCase,
+    UpdateTripReviewUseCase,
+    DeleteTripReviewUseCase,
+    ListTripReviewsUseCase,
   ],
 })
 export class ApplicationModule {}

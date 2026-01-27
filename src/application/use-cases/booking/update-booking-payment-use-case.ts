@@ -60,17 +60,39 @@ export class UpdateBookingPaymentUseCase {
       if (input.status === 'APPROVED') {
         newStatus = 'CONFIRMED';
         
-        // Incrementar contador de referidos del promoter si el trip tiene uno asociado
+        // Incrementar contador de referidos del promoter usado en la reserva (si existe)
+        if (booking.promoterCode) {
+          const promoter = await tx.promoter.findUnique({
+            where: { code: booking.promoterCode },
+          });
+          
+          if (promoter) {
+            await tx.promoter.update({
+              where: { id: promoter.id },
+              data: { referralCount: { increment: 1 } },
+            });
+          }
+        }
+        
+        // También incrementar contador del promoter asociado al trip (si existe y es diferente)
         const trip = await tx.trip.findUnique({
           where: { idTrip: booking.idTrip },
           select: { idPromoter: true },
         });
         
         if (trip?.idPromoter) {
-          await tx.promoter.update({
+          // Solo incrementar si no es el mismo promoter que ya incrementamos arriba
+          const promoterFromTrip = await tx.promoter.findUnique({
             where: { id: trip.idPromoter },
-            data: { referralCount: { increment: 1 } },
+            select: { code: true },
           });
+          
+          if (promoterFromTrip && promoterFromTrip.code !== booking.promoterCode) {
+            await tx.promoter.update({
+              where: { id: trip.idPromoter },
+              data: { referralCount: { increment: 1 } },
+            });
+          }
         }
         
         // Recalcular capacityAvailable basado SOLO en reservas CONFIRMED

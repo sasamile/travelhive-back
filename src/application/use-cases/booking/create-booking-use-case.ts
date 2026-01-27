@@ -11,6 +11,7 @@ export interface CreateBookingInput {
   adults: number;
   children: number;
   discountCode?: string;
+  promoterCode?: string;
   redirectUrl?: string; // URL a la que Wompi redirige después del pago
 }
 
@@ -101,6 +102,24 @@ export class CreateBookingUseCase {
       const serviceFeeNumber = 0;
       const totalNumber = subtotalNumber + serviceFeeNumber - discountAmountNumber;
 
+      // Validar promoter si se proporciona
+      let promoterCodeToSave: string | undefined;
+      if (input.promoterCode) {
+        const promoter = await tx.promoter.findUnique({
+          where: { code: input.promoterCode },
+        });
+
+        if (!promoter) {
+          throw new BadRequestException('Código de promoter no encontrado');
+        }
+
+        if (!promoter.isActive) {
+          throw new BadRequestException('Este promoter no está activo');
+        }
+
+        promoterCodeToSave = input.promoterCode;
+      }
+
       // Crear booking con status PENDING (se confirmará cuando Wompi confirme el pago)
       const booking = await tx.booking.create({
         data: {
@@ -113,6 +132,7 @@ export class CreateBookingUseCase {
           serviceFee: serviceFeeNumber,
           discountCode: appliedCode,
           discountAmount: discountAmountNumber,
+          promoterCode: promoterCodeToSave,
           totalBuy: totalNumber,
           currency: expedition.currency,
           bookingItems: {

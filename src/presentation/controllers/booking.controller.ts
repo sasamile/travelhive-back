@@ -8,6 +8,8 @@ import { CreateBookingDto } from '../dto/create-booking.dto';
 import { CreateBookingFromTripDto } from '../dto/create-booking-from-trip.dto';
 import { PrismaService } from '../../infrastructure/database/prisma/prisma.service';
 import { WompiService } from '../../config/payments/wompi.service';
+import { ValidateDiscountForTripUseCase } from '../../application/use-cases/booking/validate-discount-for-trip-use-case';
+import { ValidateDiscountDto } from '../dto/validate-discount.dto';
 
 @Controller('bookings')
 export class BookingController {
@@ -20,6 +22,7 @@ export class BookingController {
     private readonly updateBookingPaymentUseCase: UpdateBookingPaymentUseCase,
     private readonly prisma: PrismaService,
     private readonly wompiService: WompiService,
+    private readonly validateDiscountForTripUseCase: ValidateDiscountForTripUseCase,
   ) {}
 
   /**
@@ -39,10 +42,38 @@ export class BookingController {
       adults: dto.adults,
       children: dto.children,
       discountCode: dto.discountCode,
+      promoterCode: dto.promoterCode,
       redirectUrl: dto.redirectUrl,
     });
 
     return { message: 'Reserva creada exitosamente', data: booking };
+  }
+
+  /**
+   * Validar un código de descuento para un viaje específico antes de crear la reserva.
+   * - Verifica que el código exista y esté activo
+   * - Verifica cupo global del código (maxUses)
+   * - Verifica límite por usuario (perUserLimit)
+   * - Verifica que el usuario no tenga ya una reserva con algún código de descuento para ese viaje
+   * - Calcula el subtotal, el descuento y el total estimado
+   */
+  @Post('validate-discount')
+  @HttpCode(HttpStatus.OK)
+  async validateDiscountForTrip(@Session() session: UserSession, @Body() dto: ValidateDiscountDto) {
+    const result = await this.validateDiscountForTripUseCase.execute({
+      userId: session.user.id,
+      idTrip: BigInt(dto.idTrip),
+      startDate: dto.startDate ? new Date(dto.startDate) : undefined,
+      endDate: dto.endDate ? new Date(dto.endDate) : undefined,
+      adults: dto.adults,
+      children: dto.children,
+      discountCode: dto.discountCode,
+    });
+
+    return {
+      message: 'Código de descuento válido',
+      data: result,
+    };
   }
 
   /**
@@ -60,6 +91,7 @@ export class BookingController {
       adults: dto.adults,
       children: dto.children,
       discountCode: dto.discountCode,
+      promoterCode: dto.promoterCode,
       redirectUrl: dto.redirectUrl,
     });
 

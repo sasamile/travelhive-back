@@ -4,6 +4,7 @@ export interface PublicTripFilters {
   idCity?: bigint;
   idCityOrigin?: bigint; // ID de la ciudad de origen (primer RoutePoint)
   idCityDestination?: bigint; // ID de la ciudad de destino (último RoutePoint o idCity)
+  destinationCityName?: string; // Nombre de la ciudad de destino (para buscar en RoutePoints)
   startDate?: Date;
   endDate?: Date;
   persons?: number;

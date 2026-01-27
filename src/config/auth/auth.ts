@@ -11,7 +11,7 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
-  baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3000',
+  baseURL: 'http://localhost:3000',
   secret: process.env.BETTER_AUTH_SECRET || process.env.JWT_SECRET || 'your-secret-key-change-in-production',
   advanced: {
     disableOriginCheck: true, // Desactiva la validación de Origin (útil para Postman y desarrollo)

@@ -301,36 +301,83 @@ export class TripRepository implements ITripRepository {
       },
     };
 
-    // Filtrar por ciudad (destino) - usa idCity del trip
-    if (filters.idCity || filters.idCityDestination) {
-      whereConditions.idCity = filters.idCityDestination || filters.idCity;
-    }
+    // Filtrar por ciudad de origen/destino usando RoutePoints (nombre de la ciudad)
+    const originFilter: any = null;
+    const destinationFilters: any[] = [];
 
-    // Filtrar por ciudad de origen (primer RoutePoint con order mínimo)
+    // Origen: nombre de ciudad obtenido a partir de idCityOrigin
+    let originFilterObj: any = null;
     if (filters.idCityOrigin) {
-      // Obtener el nombre de la ciudad de origen
       const originCity = await this.prisma.city.findUnique({
         where: { idCity: filters.idCityOrigin },
         select: { nameCity: true },
       });
 
       if (originCity) {
-        // Filtrar trips que tengan un RoutePoint cuyo nombre coincida con la ciudad de origen
-        // y que tenga el order mínimo para ese trip (origen)
-        whereConditions.routePoints = {
-          some: {
-            name: {
-              contains: originCity.nameCity,
-              mode: 'insensitive',
+        originFilterObj = {
+          routePoints: {
+            some: {
+              name: {
+                contains: originCity.nameCity,
+                mode: 'insensitive',
+              },
             },
           },
         };
       }
     }
 
-    // Filtrar por ciudad de destino (último RoutePoint con order máximo o idCity)
-    // Si ya se filtró por idCity arriba, ese filtro ya cubre el destino
-    // Si se quiere filtrar también por RoutePoint, se puede agregar lógica adicional aquí
+    // Destino: puede venir por idCity (ciudad del trip) o por destinationCityName (nombre en RoutePoints)
+    // Usar OR para que encuentre trips con idCity = destino O con RoutePoint que contenga destino
+    if (filters.destinationCityName) {
+      // Opción 1: RoutePoint que contenga el nombre de destino
+      destinationFilters.push({
+        routePoints: {
+          some: {
+            name: {
+              contains: filters.destinationCityName,
+              mode: 'insensitive',
+            },
+          },
+        },
+      });
+      
+      // Opción 2: idCity coincide con el destino (si está disponible)
+      if (filters.idCity || filters.idCityDestination) {
+        destinationFilters.push({
+          idCity: filters.idCityDestination || filters.idCity,
+        });
+      }
+    } else if (filters.idCity || filters.idCityDestination) {
+      // Si no hay destinationCityName pero sí idCity/idCityDestination, usar filtro por idCity
+      destinationFilters.push({
+        idCity: filters.idCityDestination || filters.idCity,
+      });
+    }
+
+    // Combinar filtros: origen (si existe) AND (destino en RoutePoints OR idCity)
+    const finalFilters: any[] = [];
+
+    if (originFilterObj) {
+      finalFilters.push(originFilterObj);
+    }
+
+    if (destinationFilters.length === 1) {
+      finalFilters.push(destinationFilters[0]);
+    } else if (destinationFilters.length > 1) {
+      // Múltiples opciones de destino: usar OR (RoutePoint O idCity)
+      finalFilters.push({
+        OR: destinationFilters,
+      });
+    }
+
+    // Aplicar filtros finales
+    if (finalFilters.length === 1) {
+      Object.assign(whereConditions, finalFilters[0]);
+    } else if (finalFilters.length > 1) {
+      // Origen AND (destino en RoutePoints OR idCity)
+      whereConditions.AND = finalFilters;
+    }
 
     // IMPORTANTE: Filtrar trips que tengan al menos una expedición con cupo disponible
     // O que no tengan expediciones (se crearán al reservar)

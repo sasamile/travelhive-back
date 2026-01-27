@@ -23,6 +23,10 @@ export class CreateBookingFromTripDto {
   discountCode?: string;
 
   @IsOptional()
+  @IsString()
+  promoterCode?: string; // Código del promoter usado para acceder al viaje
+
+  @IsOptional()
   @IsUrl()
   redirectUrl?: string; // URL a la que Wompi redirige después del pago
 }

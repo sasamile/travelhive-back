@@ -100,6 +100,9 @@ model User {
   agencyMembers     AgencyMember[]
   bookings          Booking[]           @relation("OwnerBuy")
   discountCodeUsage DiscountCodeUsage[]
+  promoterViews     PromoterView[]
+  tripFavorites     TripFavorite[]
+  tripReviews       TripReview[]
 
   @@map("user")
 }
@@ -214,15 +217,37 @@ model Promoter {
   name          String // Nombre del promoter/influencer
   email         String?
   phone         String?
-  referralCount Int      @default(0) @map("referral_count") // Contador de referidos
+  referralCount Int      @default(0) @map("referral_count") // Contador de compras/referidos
+  viewCount     Int      @default(0) @map("view_count") // Contador de vistas únicas
   isActive      Boolean  @default(true) @map("is_active")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  agency Agency @relation(fields: [idAgency], references: [idAgency], onDelete: Cascade)
-  trips  Trip[]
+  agency        Agency         @relation(fields: [idAgency], references: [idAgency], onDelete: Cascade)
+  trips         Trip[]
+  promoterViews PromoterView[]
 
   @@map("promoters")
+}
+
+// Vistas de promoters (para contar vistas únicas por usuario)
+model PromoterView {
+  id          BigInt   @id @default(autoincrement())
+  promoterId  BigInt   @map("promoter_id")
+  idTrip      BigInt   @map("id_trip")
+  userId      String?  @map("user_id") // Null si es usuario anónimo
+  ipAddress   String?  @map("ip_address") // Para tracking de usuarios anónimos
+  userAgent   String?  @map("user_agent")
+  viewedAt    DateTime @default(now()) @map("viewed_at")
+
+  promoter Promoter @relation(fields: [promoterId], references: [id], onDelete: Cascade)
+  trip     Trip     @relation(fields: [idTrip], references: [idTrip], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([promoterId, idTrip, userId]) // Un usuario solo puede contar una vez por promoter+trip
+  @@index([promoterId])
+  @@index([idTrip])
+  @@map("promoter_views")
 }
 
 // Viajes
@@ -262,6 +287,9 @@ model Trip {
   expeditions   Expedition[]
   bookings      Booking[]
   discountCodes DiscountCode[]
+  promoterViews PromoterView[]
+  favorites     TripFavorite[]
+  reviews       TripReview[]
 
   @@map("trips")
 }
@@ -371,13 +399,14 @@ model Booking {
   serviceFee     Decimal       @default(0) @map("service_fee")
   discountCode   String?       @map("discount_code")
   discountAmount Decimal       @default(0) @map("discount_amount")
-  totalBuy       Decimal       @map("total_buy")
-  currency       String        @default("USD")
-  transactionId  String?       @map("transaction_id")
-  paymentSource  String?       @map("payment_source")
-  ticketsPdfKey  String?       @map("tickets_pdf_key")
-  createdAt      DateTime      @default(now()) @map("created_at")
-  updatedAt      DateTime      @updatedAt @map("updated_at")
+  promoterCode   String?       @map("promoter_code") // Código del promoter usado en esta reserva
+  totalBuy        Decimal       @map("total_buy")
+  currency        String        @default("USD")
+  transactionId   String?       @map("transaction_id")
+  paymentSource   String?       @map("payment_source")
+  ticketsPdfKey   String?       @map("tickets_pdf_key")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
 
   expedition        Expedition          @relation(fields: [idExpedition], references: [idExpedition], onDelete: Restrict)
   trip              Trip                @relation(fields: [idTrip], references: [idTrip], onDelete: Restrict)
@@ -442,4 +471,40 @@ model DiscountCodeUsage {
   booking      Booking      @relation(fields: [bookingId], references: [idBooking], onDelete: Cascade)
 
   @@map("discount_code_usage")
+}
+
+// Favoritos de trips (para usuarios/viajeros)
+model TripFavorite {
+  id        BigInt   @id @default(autoincrement())
+  userId    String   @map("user_id")
+  idTrip    BigInt   @map("id_trip")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trip Trip @relation(fields: [idTrip], references: [idTrip], onDelete: Cascade)
+
+  @@unique([userId, idTrip]) // Un usuario solo puede tener un trip una vez en favoritos
+  @@index([userId])
+  @@index([idTrip])
+  @@map("trip_favorites")
+}
+
+// Reseñas/Comentarios de trips (con calificación de estrellas)
+model TripReview {
+  id        BigInt   @id @default(autoincrement())
+  userId    String   @map("user_id")
+  idTrip    BigInt   @map("id_trip")
+  rating    Int      // Calificación de 1 a 5 estrellas
+  comment   String?  // Comentario opcional
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trip Trip @relation(fields: [idTrip], references: [idTrip], onDelete: Cascade)
+
+  @@unique([userId, idTrip]) // Un usuario solo puede hacer una reseña por trip
+  @@index([idTrip])
+  @@index([userId])
+  @@index([rating])
+  @@map("trip_reviews")
 }

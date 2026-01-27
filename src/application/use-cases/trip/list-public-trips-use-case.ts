@@ -24,6 +24,7 @@ export class ListPublicTripsUseCase {
     let idCity: bigint | undefined;
     let idCityOrigin: bigint | undefined;
     let idCityDestination: bigint | undefined;
+    let destinationCityName: string | undefined;
 
     // Si se proporciona el nombre de la ciudad de origen, buscar su ID
     if (filters.origen) {
@@ -59,6 +60,7 @@ export class ListPublicTripsUseCase {
 
       if (cities && cities.length > 0) {
         idCityDestination = BigInt(cities[0].id_city);
+        destinationCityName = cities[0].name_city;
         // También establecer idCity para compatibilidad con filtro antiguo
         idCity = idCityDestination;
       } else {
@@ -86,6 +88,9 @@ export class ListPublicTripsUseCase {
       }),
       ...(idCityDestination && {
         idCityDestination,
+      }),
+      ...(destinationCityName && {
+        destinationCityName,
       }),
       ...(filters.startDate && {
         startDate: new Date(filters.startDate),

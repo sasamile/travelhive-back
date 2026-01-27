@@ -12,6 +12,7 @@ export interface CreateBookingFromTripInput {
   adults: number;
   children: number;
   discountCode?: string;
+  promoterCode?: string;
   redirectUrl?: string;
 }
 
@@ -246,6 +247,30 @@ export class CreateBookingFromTripUseCase {
       const serviceFeeNumber = 0;
       const totalNumber = subtotalNumber + serviceFeeNumber - discountAmountNumber;
 
+      // Validar promoter si se proporciona
+      let promoterCodeToSave: string | undefined;
+      if (input.promoterCode) {
+        const promoter = await tx.promoter.findUnique({
+          where: { code: input.promoterCode },
+        });
+
+        if (!promoter) {
+          throw new BadRequestException('Código de promoter no encontrado');
+        }
+
+        if (!promoter.isActive) {
+          throw new BadRequestException('Este promoter no está activo');
+        }
+
+        // Verificar que el promoter pertenece a la misma agencia del trip (opcional, según tu lógica de negocio)
+        // Puedes comentar esto si quieres permitir promoters de otras agencias
+        // if (promoter.idAgency !== trip.idAgency) {
+        //   throw new BadRequestException('El promoter no pertenece a la agencia de este viaje');
+        // }
+
+        promoterCodeToSave = input.promoterCode;
+      }
+
       // Crear booking con status PENDING (se confirmará cuando Wompi confirme el pago)
       const booking = await tx.booking.create({
         data: {
@@ -258,6 +283,7 @@ export class CreateBookingFromTripUseCase {
           serviceFee: serviceFeeNumber,
           discountCode: appliedCode,
           discountAmount: discountAmountNumber,
+          promoterCode: promoterCodeToSave,
           totalBuy: totalNumber,
           currency: expedition.currency,
           bookingItems: {
