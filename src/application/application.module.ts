@@ -31,6 +31,7 @@ import { DeactivateAgencyMemberUseCase } from './use-cases/agency/deactivate-age
 import { ChangeAgencyMemberPasswordUseCase } from './use-cases/agency/change-agency-member-password-use-case';
 import { ListAgencyMembersUseCase } from './use-cases/agency/list-agency-members-use-case';
 import { GetAgencyInsightsUseCase } from './use-cases/agency/get-agency-insights-use-case';
+import { GetAgencyDashboardUseCase } from './use-cases/agency/get-agency-dashboard-use-case';
 import { CreateBookingUseCase } from './use-cases/booking/create-booking-use-case';
 import { CreateBookingFromTripUseCase } from './use-cases/booking/create-booking-from-trip-use-case';
 import { ListMyBookingsUseCase } from './use-cases/booking/list-my-bookings-use-case';
@@ -92,6 +93,7 @@ import { PaymentsModule } from '../config/payments/payments.module';
     ChangeAgencyMemberPasswordUseCase,
     ListAgencyMembersUseCase,
     GetAgencyInsightsUseCase,
+    GetAgencyDashboardUseCase,
     CreateBookingUseCase,
     CreateBookingFromTripUseCase,
     ListMyBookingsUseCase,
@@ -149,6 +151,7 @@ import { PaymentsModule } from '../config/payments/payments.module';
     ChangeAgencyMemberPasswordUseCase,
     ListAgencyMembersUseCase,
     GetAgencyInsightsUseCase,
+    GetAgencyDashboardUseCase,
     CreateBookingUseCase,
     CreateBookingFromTripUseCase,
     ListMyBookingsUseCase,

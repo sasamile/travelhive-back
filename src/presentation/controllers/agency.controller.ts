@@ -57,6 +57,7 @@ import { CreateBookingUseCase } from '../../application/use-cases/booking/create
 import { ListMyBookingsUseCase } from '../../application/use-cases/booking/list-my-bookings-use-case';
 import { ListAgencyBookingsUseCase } from '../../application/use-cases/booking/list-agency-bookings-use-case';
 import { GetAgencyInsightsUseCase } from '../../application/use-cases/agency/get-agency-insights-use-case';
+import { GetAgencyDashboardUseCase } from '../../application/use-cases/agency/get-agency-dashboard-use-case';
 import { UpdateAgencyDto } from '../dto/update-agency.dto';
 import { CreateBookingDto } from '../dto/create-booking.dto';
 import { CreateAgencyMemberDto } from '../dto/create-agency-member.dto';
@@ -96,6 +97,7 @@ export class AgencyController {
     private readonly listMyBookingsUseCase: ListMyBookingsUseCase,
     private readonly listAgencyBookingsUseCase: ListAgencyBookingsUseCase,
     private readonly getAgencyInsightsUseCase: GetAgencyInsightsUseCase,
+    private readonly getAgencyDashboardUseCase: GetAgencyDashboardUseCase,
   ) {}
 
   /**
@@ -743,6 +745,26 @@ export class AgencyController {
       endDate: endDate ? new Date(endDate) : undefined,
       page: page ? parseInt(page, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
+    });
+
+    return result;
+  }
+
+  /**
+   * Obtiene el dashboard completo del admin de la agencia
+   * Incluye información de la agencia, métricas generales, actividad reciente y estadísticas rápidas
+   * Solo accesible para usuarios con rol 'admin' en la agencia
+   * 
+   * Ejemplo:
+   * GET /agencies/dashboard
+   */
+  @Get('dashboard')
+  async getAgencyDashboard(@Session() session: UserSession) {
+    const agencyId = await this.getUserAgencyId(session.user.id);
+    
+    const result = await this.getAgencyDashboardUseCase.execute({
+      agencyId,
+      userId: session.user.id,
     });
 
     return result;
