@@ -4,6 +4,7 @@ export class AgencyMember {
   idUser: string; // Cambiado a string para Better Auth
   role: string;
   isActive: boolean;
+  temporaryPassword?: string; // Contraseña temporal en texto plano para compartir con el equipo
   createdAt: Date;
   updatedAt: Date;
 

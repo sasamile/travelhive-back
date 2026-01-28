@@ -23,13 +23,23 @@ export class ListExpeditionsUseCase {
       throw new NotFoundException('Trip no encontrado');
     }
 
-    // Verificar que el usuario pertenezca a la agencia del trip
-    const membership = await this.agencyMemberRepository.findByAgencyAndUser(
-      trip.idAgency,
-      userId,
-    );
-    if (!membership) {
-      throw new ForbiddenException('No tienes permiso para ver las expediciones de esta agencia');
+    // Verificar permisos: debe ser agencia o host del trip
+    if (trip.idAgency) {
+      // Es una agencia, verificar membresía
+      const membership = await this.agencyMemberRepository.findByAgencyAndUser(
+        trip.idAgency,
+        userId,
+      );
+      if (!membership) {
+        throw new ForbiddenException('No tienes permiso para ver las expediciones de esta agencia');
+      }
+    } else if (trip.idHost) {
+      // Es un host, verificar que sea el dueño
+      if (trip.idHost !== userId) {
+        throw new ForbiddenException('No tienes permiso para ver las expediciones de esta experiencia');
+      }
+    } else {
+      throw new ForbiddenException('Trip no tiene agencia ni host asociado');
     }
 
     const expeditions = await this.expeditionRepository.findByTrip(tripId);

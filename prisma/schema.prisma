@@ -15,6 +15,11 @@ enum TripStatus {
   ARCHIVED
 }
 
+enum TripType {
+  TRIP        // Viaje tradicional (requiere aprobación, puede estar en DRAFT)
+  EXPERIENCE  // Experiencia/Evento (se publica automáticamente)
+}
+
 enum TripCategory {
   ADVENTURE
   LUXURY
@@ -74,6 +79,12 @@ enum AgencyApprovalStatus {
   REJECTED
 }
 
+enum HostApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 // Tabla de Better Auth - User (para autenticación)
 model User {
   id            String   @id @default(cuid())
@@ -87,6 +98,14 @@ model User {
   // Campos adicionales personalizados
   dniUser   String? @map("dni_user")
   phoneUser String? @map("phone_user")
+  city      String? // Ciudad del usuario/anfitrión
+  department String? // Departamento del usuario/anfitrión
+  isHost    Boolean @default(false) @map("is_host") // Indica si es un anfitrión (persona natural que crea experiencias)
+  isSuperAdmin Boolean @default(false) @map("is_super_admin") // Indica si es super administrador
+  hostApprovalStatus String? @map("host_approval_status") // Estado de aprobación para hosts (PENDING, APPROVED, REJECTED)
+  hostRejectionReason String? @map("host_rejection_reason") // Razón de rechazo si es rechazado
+  hostReviewedBy String? @map("host_reviewed_by") // ID del superadmin que revisó
+  hostReviewedAt DateTime? @map("host_reviewed_at") // Fecha de revisión
 
   // Campos adicionales para customers/viajeros (opcionales)
   bio          String? // Biografía del usuario
@@ -103,6 +122,7 @@ model User {
   promoterViews     PromoterView[]
   tripFavorites     TripFavorite[]
   tripReviews       TripReview[]
+  trips             Trip[]              @relation("HostTrips") // Experiencias creadas por el anfitrión
 
   @@map("user")
 }
@@ -194,13 +214,14 @@ model Agency {
 
 // Miembros de agencias (relación muchos a muchos con roles)
 model AgencyMember {
-  id        BigInt   @id @default(autoincrement())
-  idAgency  BigInt   @map("id_agency")
-  idUser    String   @map("user_id") // Cambiado a String para Better Auth
-  role      String // 'admin', 'organizer', 'jipper', etc.
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id               BigInt   @id @default(autoincrement())
+  idAgency         BigInt   @map("id_agency")
+  idUser           String   @map("user_id") // Cambiado a String para Better Auth
+  role             String // 'admin', 'organizer', 'jipper', etc.
+  isActive         Boolean  @default(true) @map("is_active")
+  temporaryPassword String?  @map("temporary_password") // Contraseña temporal en texto plano para compartir con el equipo
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
   agency Agency @relation(fields: [idAgency], references: [idAgency], onDelete: Cascade)
   user   User   @relation(fields: [idUser], references: [id], onDelete: Cascade)
@@ -250,17 +271,20 @@ model PromoterView {
   @@map("promoter_views")
 }
 
-// Viajes
+// Viajes/Experiencias (pueden ser creados por agencias o anfitriones)
 model Trip {
   idTrip            BigInt       @id @default(autoincrement()) @map("id_trip")
-  idAgency          BigInt       @map("id_agency")
+  idAgency          BigInt?      @map("id_agency") // Opcional: puede ser creado por agencia
+  idHost            String?      @map("id_host") // Opcional: puede ser creado por anfitrión (host)
   idCity            BigInt       @map("id_city")
+  type              TripType     @default(TRIP) @map("type") // Tipo: TRIP (viaje) o EXPERIENCE (experiencia/evento)
   title             String
   description       String?
   category          TripCategory
   destinationRegion String?      @map("destination_region")
   latitude          Decimal?
   longitude         Decimal?
+  location          String? // Lugar/ubicación específica (ej: "Playa de Cartagena", "Parque Nacional")
   startDate         DateTime?    @map("start_date")
   endDate           DateTime?    @map("end_date")
   durationDays      Int          @map("duration_days")
@@ -278,7 +302,8 @@ model Trip {
   createdAt         DateTime     @default(now()) @map("created_at")
   updatedAt         DateTime     @updatedAt @map("updated_at")
 
-  agency        Agency             @relation(fields: [idAgency], references: [idAgency], onDelete: Cascade)
+  agency        Agency?            @relation(fields: [idAgency], references: [idAgency], onDelete: Cascade)
+  host          User?              @relation("HostTrips", fields: [idHost], references: [id], onDelete: Cascade)
   city          City               @relation(fields: [idCity], references: [idCity], onDelete: Restrict)
   promoter      Promoter?          @relation(fields: [idPromoter], references: [id], onDelete: SetNull)
   routePoints   RoutePoint[]
@@ -291,6 +316,8 @@ model Trip {
   favorites     TripFavorite[]
   reviews       TripReview[]
 
+  @@index([idAgency])
+  @@index([idHost])
   @@map("trips")
 }
 
@@ -390,7 +417,7 @@ model Booking {
   idBooking      BigInt        @id @default(autoincrement()) @map("id_booking")
   idExpedition   BigInt        @map("id_expedition")
   idTrip         BigInt        @map("id_trip")
-  idAgency       BigInt        @map("id_agency")
+  idAgency       BigInt?       @map("id_agency") // Opcional: puede ser de agencia o host
   ownerBuy       String        @map("owner_buy") // Cambiado a String para Better Auth
   dateBuy        DateTime      @default(now()) @map("date_buy")
   referenceBuy   String?       @map("reference_buy")
@@ -410,10 +437,11 @@ model Booking {
 
   expedition        Expedition          @relation(fields: [idExpedition], references: [idExpedition], onDelete: Restrict)
   trip              Trip                @relation(fields: [idTrip], references: [idTrip], onDelete: Restrict)
-  agency            Agency              @relation(fields: [idAgency], references: [idAgency], onDelete: Restrict)
+  agency            Agency?             @relation(fields: [idAgency], references: [idAgency], onDelete: Restrict)
   owner             User                @relation("OwnerBuy", fields: [ownerBuy], references: [id], onDelete: Restrict)
   bookingItems      BookingItem[]
   discountCodeUsage DiscountCodeUsage[]
+  qrCode            BookingQR?
 
   @@map("bookings")
 }
@@ -507,4 +535,23 @@ model TripReview {
   @@index([userId])
   @@index([rating])
   @@map("trip_reviews")
+}
+
+// Código QR para entrada a viajes/expediciones
+model BookingQR {
+  id          BigInt   @id @default(autoincrement()) @map("id")
+  idBooking   BigInt   @unique @map("id_booking")
+  qrCode      String   @unique @map("qr_code") // Código único del QR (UUID o similar)
+  qrImageUrl  String?  @map("qr_image_url") // URL de la imagen del QR (opcional, puede generarse en el frontend)
+  isClaimed   Boolean  @default(false) @map("is_claimed") // Si ya fue usado/reclamado por la guardia
+  claimedAt   DateTime? @map("claimed_at") // Fecha/hora en que fue reclamado
+  claimedBy   String?  @map("claimed_by") // ID del guardia/usuario que lo reclamó (opcional)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  booking Booking @relation(fields: [idBooking], references: [idBooking], onDelete: Cascade)
+
+  @@index([qrCode])
+  @@index([idBooking])
+  @@map("booking_qr")
 }

@@ -68,6 +68,18 @@ export const createAuthInstance = (prisma: PrismaClient) => {
           type: 'string',
           required: false,
         },
+        city: {
+          type: 'string',
+          required: false,
+        },
+        department: {
+          type: 'string',
+          required: false,
+        },
+        isHost: {
+          type: 'boolean',
+          required: false,
+        },
         // Campos adicionales para customers/viajeros (opcionales)
         bio: {
           type: 'string',
@@ -98,13 +110,44 @@ export const createAuthInstance = (prisma: PrismaClient) => {
         // - Las demás funcionalidades requieren una agencia APPROVED
       }),
       after: createAuthMiddleware(async (ctx) => {
-        // Agregar información de agencias a la respuesta del login
+        // Agregar información de agencias y anfitrión a la respuesta del login y get-session
         // Maneja tanto login con email como login con Google (viajeros)
         const isSignInPath = ctx.path === '/sign-in/email' || ctx.path === '/callback/google';
+        const isGetSessionPath = ctx.path === '/get-session';
         
-        if (isSignInPath && ctx.context.newSession) {
-          const userId = ctx.context.newSession.user.id;
-          
+        // Obtener userId desde la sesión (puede venir de newSession o de session existente)
+        const userId = ctx.context.newSession?.user?.id || ctx.context.session?.user?.id;
+        
+        if ((isSignInPath || isGetSessionPath) && userId) {
+          // Obtener información adicional del usuario usando $queryRaw para manejar columnas que pueden no existir
+          const userInfoRaw = await prisma.$queryRaw<any[]>`
+            SELECT 
+              "is_host" as "isHost",
+              COALESCE("is_super_admin", false) as "isSuperAdmin",
+              "city",
+              "department",
+              CAST("host_approval_status" AS TEXT) as "hostApprovalStatus"
+            FROM "user"
+            WHERE id = ${userId}
+            LIMIT 1
+          `.catch(() => []);
+
+          const userInfo = userInfoRaw && userInfoRaw.length > 0 ? userInfoRaw[0] : null;
+
+          // Bloquear hosts no aprobados (excepto super admins)
+          if (isSignInPath && userInfo && userInfo.isHost && !userInfo.isSuperAdmin) {
+            if (!userInfo.hostApprovalStatus || userInfo.hostApprovalStatus === 'PENDING') {
+              throw new APIError('UNAUTHORIZED', {
+                message: 'Tu cuenta de anfitrión está pendiente de aprobación. Un administrador revisará tu solicitud y te contactará pronto.',
+              });
+            }
+            if (userInfo.hostApprovalStatus === 'REJECTED') {
+              throw new APIError('UNAUTHORIZED', {
+                message: 'Tu cuenta de anfitrión ha sido rechazada. Por favor, contacta con el administrador para más información.',
+              });
+            }
+          }
+
           // Obtener las agencias del usuario (si tiene alguna)
           // Los viajeros pueden no tener agencias, así que esto puede retornar un array vacío
           // IMPORTANTE:
@@ -159,15 +202,36 @@ export const createAuthInstance = (prisma: PrismaClient) => {
             },
           }));
 
-          // Modificar la respuesta para incluir las agencias (puede ser array vacío para viajeros)
+          // Modificar la respuesta para incluir las agencias y la información del anfitrión
           const returned = ctx.context.returned as any;
           if (returned) {
             // Verificar si la respuesta tiene estructura { data: { user, ... } } o { user, ... }
             const responseData = (returned as any).data || returned;
             
-            if (responseData && typeof responseData === 'object' && 'user' in responseData) {
+            // Agregar información del anfitrión al objeto user
+            const updatedUser = responseData?.user ? {
+              ...responseData.user,
+              isHost: userInfo?.isHost ?? false,
+              isSuperAdmin: userInfo?.isSuperAdmin ?? false,
+              city: userInfo?.city || undefined,
+              department: userInfo?.department || undefined,
+              hostApprovalStatus: userInfo?.hostApprovalStatus || undefined,
+            } : null;
+
+            // Para get-session, la estructura puede ser diferente
+            if (isGetSessionPath) {
               return ctx.json({
                 ...responseData,
+                ...(updatedUser && { user: updatedUser }),
+                agencies,
+              });
+            }
+
+            // Para sign-in, mantener la estructura original pero con user actualizado
+            if (isSignInPath && responseData && typeof responseData === 'object' && 'user' in responseData) {
+              return ctx.json({
+                ...responseData,
+                user: updatedUser,
                 agencies,
               });
             }

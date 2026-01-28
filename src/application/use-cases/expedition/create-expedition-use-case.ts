@@ -35,18 +35,28 @@ export class CreateExpeditionUseCase {
       throw new NotFoundException('Trip no encontrado');
     }
 
-    // Verificar que el usuario pertenezca a la agencia del trip
-    const membership = await this.agencyMemberRepository.findByAgencyAndUser(
-      trip.idAgency,
-      userId,
-    );
-    if (!membership) {
-      throw new ForbiddenException('No tienes permiso para crear expediciones en esta agencia');
-    }
-
-    // Verificar que el usuario tenga rol de admin o editor
-    if (!['admin', 'editor'].includes(membership.role)) {
-      throw new ForbiddenException('Solo administradores y editores pueden crear expediciones');
+    // Verificar permisos: debe ser agencia o host del trip
+    if (trip.idAgency) {
+      // Es una agencia, verificar membresía
+      const membership = await this.agencyMemberRepository.findByAgencyAndUser(
+        trip.idAgency,
+        userId,
+      );
+      if (!membership) {
+        throw new ForbiddenException('No tienes permiso para crear expediciones en esta agencia');
+      }
+      // Verificar que el usuario tenga rol de admin o editor
+      if (!['admin', 'editor'].includes(membership.role)) {
+        throw new ForbiddenException('Solo administradores y editores pueden crear expediciones');
+      }
+    } else if (trip.idHost) {
+      // Es un host, verificar que sea el dueño
+      if (trip.idHost !== userId) {
+        throw new ForbiddenException('No tienes permiso para crear expediciones de esta experiencia');
+      }
+      // Los hosts pueden crear expediciones directamente (no necesitan rol específico)
+    } else {
+      throw new ForbiddenException('Trip no tiene agencia ni host asociado');
     }
 
     const expedition = await this.expeditionRepository.create({

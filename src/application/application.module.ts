@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { RegisterAgencyUseCase } from './use-cases/auth/register-use-case';
+import { RegisterHostUseCase } from './use-cases/auth/register-host-use-case';
 import { LoginUseCase } from './use-cases/auth/login-use-case';
 import { ApproveAgencyUseCase } from './use-cases/agency/approve-agency-use-case';
 import { ListPendingAgenciesUseCase } from './use-cases/agency/list-pending-agencies-use-case';
@@ -46,6 +47,13 @@ import { DeleteTripReviewUseCase } from './use-cases/trip-review/delete-trip-rev
 import { ListTripReviewsUseCase } from './use-cases/trip-review/list-trip-reviews-use-case';
 import { BookingCleanupService } from './services/booking-cleanup.service';
 import { ExpeditionStatusUpdateService } from './services/expedition-status-update.service';
+import { QRCodeService } from './services/qr-code.service';
+import { CreateSuperAdminUseCase } from './use-cases/admin/create-super-admin-use-case';
+import { CreateFirstSuperAdminUseCase } from './use-cases/admin/create-first-super-admin-use-case';
+import { ListAllAgenciesUseCase } from './use-cases/admin/list-all-agencies-use-case';
+import { ListPendingHostsUseCase } from './use-cases/admin/list-pending-hosts-use-case';
+import { ApproveHostUseCase } from './use-cases/admin/approve-host-use-case';
+import { GetAdminMetricsUseCase } from './use-cases/admin/get-admin-metrics-use-case';
 import { InfrastructureModule } from '../infrastructure/infrastructure.module';
 import { PaymentsModule } from '../config/payments/payments.module';
 
@@ -53,6 +61,7 @@ import { PaymentsModule } from '../config/payments/payments.module';
   imports: [InfrastructureModule, PaymentsModule],
   providers: [
     RegisterAgencyUseCase,
+    RegisterHostUseCase,
     LoginUseCase,
     ApproveAgencyUseCase,
     ListPendingAgenciesUseCase,
@@ -91,6 +100,7 @@ import { PaymentsModule } from '../config/payments/payments.module';
     CancelPendingBookingUseCase,
     BookingCleanupService,
     ExpeditionStatusUpdateService,
+    QRCodeService,
     ValidateDiscountForTripUseCase,
     RegisterPromoterViewUseCase,
     ToggleTripFavoriteUseCase,
@@ -99,9 +109,16 @@ import { PaymentsModule } from '../config/payments/payments.module';
     UpdateTripReviewUseCase,
     DeleteTripReviewUseCase,
     ListTripReviewsUseCase,
+    CreateSuperAdminUseCase,
+    CreateFirstSuperAdminUseCase,
+    ListAllAgenciesUseCase,
+    ListPendingHostsUseCase,
+    ApproveHostUseCase,
+    GetAdminMetricsUseCase,
   ],
   exports: [
     RegisterAgencyUseCase,
+    RegisterHostUseCase,
     LoginUseCase,
     ApproveAgencyUseCase,
     ListPendingAgenciesUseCase,
@@ -140,6 +157,7 @@ import { PaymentsModule } from '../config/payments/payments.module';
     CancelPendingBookingUseCase,
     BookingCleanupService,
     ExpeditionStatusUpdateService,
+    QRCodeService,
     ValidateDiscountForTripUseCase,
     RegisterPromoterViewUseCase,
     ToggleTripFavoriteUseCase,
@@ -148,6 +166,12 @@ import { PaymentsModule } from '../config/payments/payments.module';
     UpdateTripReviewUseCase,
     DeleteTripReviewUseCase,
     ListTripReviewsUseCase,
+    CreateSuperAdminUseCase,
+    CreateFirstSuperAdminUseCase,
+    ListAllAgenciesUseCase,
+    ListPendingHostsUseCase,
+    ApproveHostUseCase,
+    GetAdminMetricsUseCase,
   ],
 })
 export class ApplicationModule {}

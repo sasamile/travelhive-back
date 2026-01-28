@@ -4,6 +4,11 @@ export enum TripStatus {
   ARCHIVED = 'ARCHIVED',
 }
 
+export enum TripType {
+  TRIP = 'TRIP',        // Viaje tradicional (requiere aprobación, puede estar en DRAFT)
+  EXPERIENCE = 'EXPERIENCE', // Experiencia/Evento (se publica automáticamente)
+}
+
 export enum TripCategory {
   ADVENTURE = 'ADVENTURE',
   LUXURY = 'LUXURY',
@@ -74,14 +79,17 @@ export interface ItineraryDay {
 
 export class Trip {
   idTrip: bigint;
-  idAgency: bigint;
+  idAgency?: bigint; // Opcional: puede ser creado por agencia
+  idHost?: string; // Opcional: puede ser creado por anfitrión (host)
   idCity: bigint;
+  type: TripType; // Tipo: TRIP (viaje) o EXPERIENCE (experiencia/evento)
   title: string;
   description?: string;
   category: TripCategory;
   destinationRegion?: string;
   latitude?: number;
   longitude?: number;
+  location?: string; // Lugar/ubicación específica
   startDate?: Date;
   endDate?: Date;
   durationDays: number;

@@ -18,6 +18,7 @@ export class ListPublicTripsUseCase {
     startDate?: string;
     endDate?: string;
     persons?: number;
+    type?: 'TRIP' | 'EXPERIENCE';
     page?: number;
     limit?: number;
   }): Promise<PublicTripsResult> {
@@ -100,6 +101,9 @@ export class ListPublicTripsUseCase {
       }),
       ...(filters.persons && {
         persons: filters.persons,
+      }),
+      ...(filters.type && {
+        type: filters.type,
       }),
       page: filters.page || 1,
       limit: filters.limit || 20,

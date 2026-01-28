@@ -21,22 +21,38 @@ export class UpdateTripUseCase {
     tripId: bigint,
     data: UpdateTripDto,
     userId: string,
+    isHost?: boolean,
   ): Promise<Trip> {
-    // Verificar que el trip exista y pertenezca a la agencia
-    const trip = await this.tripRepository.findByAgencyAndId(agencyId, tripId);
-    if (!trip) {
-      throw new NotFoundException('Trip no encontrado');
-    }
+    // Verificar que el trip exista
+    let trip: Trip | null = null;
+    
+    if (isHost || agencyId === BigInt(0)) {
+      // Si es host, buscar por idHost
+      trip = await this.tripRepository.findById(tripId);
+      if (!trip) {
+        throw new NotFoundException('Trip no encontrado');
+      }
+      // Verificar que el trip pertenezca al host
+      if (trip.idHost !== userId) {
+        throw new ForbiddenException('No tienes permiso para actualizar esta experiencia');
+      }
+    } else {
+      // Si es agencia, buscar por agencia
+      trip = await this.tripRepository.findByAgencyAndId(agencyId, tripId);
+      if (!trip) {
+        throw new NotFoundException('Trip no encontrado');
+      }
 
-    // Verificar que el usuario pertenezca a la agencia
-    const membership = await this.agencyMemberRepository.findByAgencyAndUser(agencyId, userId);
-    if (!membership) {
-      throw new ForbiddenException('No tienes permiso para actualizar trips de esta agencia');
-    }
+      // Verificar que el usuario pertenezca a la agencia
+      const membership = await this.agencyMemberRepository.findByAgencyAndUser(agencyId, userId);
+      if (!membership) {
+        throw new ForbiddenException('No tienes permiso para actualizar trips de esta agencia');
+      }
 
-    // Verificar que el usuario tenga rol de admin o editor
-    if (!['admin', 'editor'].includes(membership.role)) {
-      throw new ForbiddenException('Solo administradores y editores pueden actualizar trips');
+      // Verificar que el usuario tenga rol de admin o editor
+      if (!['admin', 'editor'].includes(membership.role)) {
+        throw new ForbiddenException('Solo administradores y editores pueden actualizar trips');
+      }
     }
 
     const updateData: Partial<Trip> = {
@@ -45,6 +61,8 @@ export class UpdateTripUseCase {
       ...(data.description !== undefined && { description: data.description }),
       ...(data.category && { category: data.category as TripCategory }),
       ...(data.destinationRegion !== undefined && { destinationRegion: data.destinationRegion }),
+      ...(data.location !== undefined && { location: data.location }),
+      ...(data.type && { type: data.type as any }),
       ...(data.latitude !== undefined && { latitude: data.latitude }),
       ...(data.longitude !== undefined && { longitude: data.longitude }),
       ...(data.startDate && { startDate: new Date(data.startDate) }),
@@ -74,9 +92,9 @@ export class UpdateTripUseCase {
       updateData.publishedAt = new Date();
     }
 
-    // Manejar promoter: buscar existente o crear nuevo
+    // Manejar promoter: buscar existente o crear nuevo (solo para agencias)
     let promoterId: bigint | undefined = undefined;
-    if (data.promoterCode !== undefined) {
+    if (!isHost && agencyId !== BigInt(0) && data.promoterCode !== undefined) {
       if (data.promoterCode === null || data.promoterCode === '') {
         // Si se envía vacío, remover el promoter
         promoterId = undefined;
@@ -111,7 +129,7 @@ export class UpdateTripUseCase {
 
     const updatedTrip = await this.tripRepository.update(tripId, updateData);
 
-    // Manejar códigos de descuento si se proporcionaron
+    // Manejar códigos de descuento si se proporcionaron (para agencias y hosts)
     if (data.discountCodes !== undefined) {
       // Eliminar códigos de descuento existentes del trip
       await this.prisma.discountCode.deleteMany({
@@ -129,7 +147,7 @@ export class UpdateTripUseCase {
                 value: discountCode.percentage,
                 maxUses: discountCode.maxUses,
                 perUserLimit: discountCode.perUserLimit,
-                idAgency: agencyId,
+                idAgency: (isHost || agencyId === BigInt(0)) ? null : agencyId, // null si es host
                 idTrip: tripId,
                 active: true,
               },

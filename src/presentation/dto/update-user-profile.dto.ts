@@ -20,6 +20,14 @@ export class UpdateUserProfileDto {
 
   @IsOptional()
   @IsString()
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  department?: string;
+
+  @IsOptional()
+  @IsString()
   picture?: string;
 
   // Campos adicionales para customers/viajeros (opcionales)

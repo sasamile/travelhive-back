@@ -37,7 +37,61 @@ export class TripController {
     const formattedTrips = result.trips.map((trip: any) => ({
       ...trip,
       idTrip: trip.idTrip.toString(),
-      idAgency: trip.idAgency.toString(),
+      idAgency: trip.idAgency?.toString(),
+      idHost: trip.idHost,
+      idCity: trip.idCity.toString(),
+      agency: trip.agency
+        ? {
+            ...trip.agency,
+            idAgency: trip.agency.idAgency.toString(),
+          }
+        : null,
+      host: trip.host
+        ? {
+            id: trip.host.id,
+            name: trip.host.name,
+            image: trip.host.image,
+          }
+        : null,
+      city: trip.city
+        ? {
+            ...trip.city,
+            idCity: trip.city.idCity.toString(),
+          }
+        : null,
+      expeditions: trip.expeditions || [],
+    }));
+
+    return {
+      data: formattedTrips,
+      pagination: {
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        totalPages: result.totalPages,
+      },
+    };
+  }
+
+  /**
+   * Endpoint público para listar TODOS los viajes (type=TRIP) publicados
+   * Solo muestra viajes de agencias aprobadas que están publicados y disponibles
+   * No requiere autenticación
+   */
+  @Get('all')
+  @AllowAnonymous()
+  async listAllTrips(@Query('page') page?: string, @Query('limit') limit?: string) {
+    const result = await this.listPublicTripsUseCase.execute({
+      type: 'TRIP',
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 100, // Por defecto 100 para mostrar todos
+    });
+
+    // Formatear respuesta
+    const formattedTrips = result.trips.map((trip: any) => ({
+      ...trip,
+      idTrip: trip.idTrip.toString(),
+      idAgency: trip.idAgency?.toString(),
       idCity: trip.idCity.toString(),
       agency: trip.agency
         ? {
@@ -66,8 +120,9 @@ export class TripController {
   }
 
   /**
-   * Endpoint público para obtener un viaje específico por ID
-   * Solo muestra viajes publicados de agencias aprobadas
+   * Endpoint público para obtener un viaje o experiencia específico por ID
+   * Funciona tanto para viajes (TRIP) de agencias aprobadas como para experiencias (EXPERIENCE) de hosts
+   * Solo muestra viajes/experiencias publicados y activos
    * No requiere autenticación
    */
   @Get(':id')
@@ -80,12 +135,20 @@ export class TripController {
       data: {
         ...trip,
         idTrip: trip.idTrip.toString(),
-        idAgency: trip.idAgency.toString(),
+        idAgency: trip.idAgency?.toString(),
+        idHost: trip.idHost,
         idCity: trip.idCity.toString(),
         agency: (trip as any).agency
           ? {
               ...(trip as any).agency,
               idAgency: (trip as any).agency.idAgency.toString(),
+            }
+          : null,
+        host: (trip as any).host
+          ? {
+              id: (trip as any).host.id,
+              name: (trip as any).host.name,
+              image: (trip as any).host.image,
             }
           : null,
         city: (trip as any).city

@@ -3,8 +3,10 @@ import { PrismaService } from '../../../infrastructure/database/prisma/prisma.se
 
 export interface GetTripStatsInput {
   tripId: bigint;
-  agencyId: bigint;
+  agencyId?: bigint; // Opcional: puede ser agencia o host
   userId: string;
+  isHost?: boolean; // Indica si es un host
+  expeditionId?: bigint; // Opcional: filtrar estadísticas por expedición específica
 }
 
 export interface GetTripStatsResponse {
@@ -89,6 +91,24 @@ export interface GetTripStatsResponse {
       totalPrice: number;
     }>;
   }>;
+  reviews: Array<{
+    id: string;
+    rating: number;
+    comment: string | null;
+    createdAt: string;
+    updatedAt: string;
+    user: {
+      id: string;
+      name: string;
+      email: string;
+      image: string | null;
+    };
+  }>;
+  reviewStats: {
+    totalReviews: number;
+    averageRating: number;
+    ratingDistribution: Record<number, number>;
+  };
 }
 
 @Injectable()
@@ -96,41 +116,90 @@ export class GetTripStatsUseCase {
   constructor(private readonly prisma: PrismaService) {}
 
   async execute(input: GetTripStatsInput): Promise<GetTripStatsResponse> {
-    // Verificar que el usuario pertenezca a la agencia
-    const membership = await this.prisma.$queryRaw<any[]>`
-      SELECT 
-        id,
-        id_agency as "idAgency",
-        user_id as "idUser",
-        role
-      FROM agency_members
-      WHERE id_agency = ${input.agencyId}::bigint 
-        AND user_id = ${input.userId}
-        AND role IN ('admin', 'editor')
-      LIMIT 1
-    `;
+    let trip: {
+      idTrip: bigint;
+      title: string;
+      status: string;
+      isActive: boolean;
+      idPromoter: bigint | null;
+    } | null = null;
 
-    if (!membership || membership.length === 0) {
-      throw new ForbiddenException('No tienes permiso para ver las estadísticas de este viaje');
-    }
+    // Si es un host, verificar que el trip pertenezca al host
+    if (input.isHost) {
+      trip = await this.prisma.trip.findFirst({
+        where: {
+          idTrip: input.tripId,
+          idHost: input.userId,
+        },
+        select: {
+          idTrip: true,
+          title: true,
+          status: true,
+          isActive: true,
+          idPromoter: true,
+        },
+      });
 
-    // Verificar que el viaje existe y pertenece a la agencia
-    const trip = await this.prisma.trip.findFirst({
-      where: {
-        idTrip: input.tripId,
-        idAgency: input.agencyId,
-      },
-      select: {
-        idTrip: true,
-        title: true,
-        status: true,
-        isActive: true,
-        idPromoter: true,
-      },
-    });
+      if (!trip) {
+        throw new NotFoundException('Experiencia no encontrada o no pertenece a ti');
+      }
+    } else {
+      // Es una agencia, verificar membresía
+      if (!input.agencyId) {
+        throw new ForbiddenException('Se requiere agencyId para agencias');
+      }
 
-    if (!trip) {
-      throw new NotFoundException('Viaje no encontrado o no pertenece a tu agencia');
+      // PRIMERO: Verificar que el viaje existe (sin filtrar por agencia)
+      const tripExists = await this.prisma.trip.findUnique({
+        where: {
+          idTrip: input.tripId,
+        },
+        select: {
+          idTrip: true,
+          idAgency: true,
+          title: true,
+          status: true,
+          isActive: true,
+          idPromoter: true,
+        },
+      });
+
+      if (!tripExists) {
+        throw new NotFoundException('Viaje no encontrado');
+      }
+
+      // SEGUNDO: Verificar que el viaje pertenece a la agencia
+      // Usar comparación de strings para evitar problemas con BigInt
+      if (!tripExists.idAgency || tripExists.idAgency.toString() !== input.agencyId.toString()) {
+        throw new ForbiddenException('Este viaje no pertenece a tu agencia');
+      }
+
+      // TERCERO: Verificar membresía de la agencia
+      const membership = await this.prisma.$queryRaw<any[]>`
+        SELECT 
+          id,
+          id_agency as "idAgency",
+          user_id as "idUser",
+          role
+        FROM agency_members
+        WHERE id_agency = ${input.agencyId}::bigint 
+          AND user_id = ${input.userId}
+          AND role IN ('admin', 'editor')
+        LIMIT 1
+      `;
+
+      if (!membership || membership.length === 0) {
+        throw new ForbiddenException('No tienes permiso para ver las estadísticas de este viaje. Se requiere rol de admin o editor.');
+      }
+
+      // Usar el trip encontrado
+      trip = {
+        idTrip: tripExists.idTrip,
+        title: tripExists.title,
+        status: tripExists.status,
+        isActive: tripExists.isActive,
+        idPromoter: tripExists.idPromoter,
+      };
     }
 
     // Obtener promoter si existe
@@ -176,11 +245,18 @@ export class GetTripStatsUseCase {
     const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
 
-    // Obtener todas las reservas del viaje
+    // Obtener todas las reservas del viaje (filtradas por expedición si se proporciona)
+    const bookingWhere: any = {
+      idTrip: input.tripId,
+    };
+    
+    // Si se proporciona un expeditionId, filtrar solo las reservas de esa expedición
+    if (input.expeditionId) {
+      bookingWhere.idExpedition = input.expeditionId;
+    }
+    
     const allBookings = await this.prisma.booking.findMany({
-      where: {
-        idTrip: input.tripId,
-      },
+      where: bookingWhere,
       select: {
         idBooking: true,
         status: true,
@@ -353,6 +429,74 @@ export class GetTripStatsUseCase {
       })),
     }));
 
+    // Obtener reviews/comentarios del trip
+    const [reviews, totalReviews] = await Promise.all([
+      this.prisma.tripReview.findMany({
+        where: {
+          idTrip: input.tripId,
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              image: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        take: 50, // Limitar a 50 reviews más recientes para las estadísticas
+      }),
+      this.prisma.tripReview.count({
+        where: {
+          idTrip: input.tripId,
+        },
+      }),
+    ]);
+
+    // Calcular estadísticas de calificaciones
+    const ratingStats = await this.prisma.tripReview.groupBy({
+      by: ['rating'],
+      where: {
+        idTrip: input.tripId,
+      },
+      _count: {
+        rating: true,
+      },
+    });
+
+    const averageRating =
+      reviews.length > 0
+        ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+        : 0;
+
+    // Formatear reviews
+    const formattedReviews = reviews.map((review) => ({
+      id: review.id.toString(),
+      rating: review.rating,
+      comment: review.comment,
+      createdAt: review.createdAt.toISOString(),
+      updatedAt: review.updatedAt.toISOString(),
+      user: {
+        id: review.user.id,
+        name: review.user.name,
+        email: review.user.email,
+        image: review.user.image,
+      },
+    }));
+
+    // Formatear distribución de calificaciones
+    const ratingDistribution = ratingStats.reduce(
+      (acc, stat) => {
+        acc[stat.rating] = stat._count.rating;
+        return acc;
+      },
+      {} as Record<number, number>,
+    );
+
     return {
       trip: {
         idTrip: trip.idTrip.toString(),
@@ -391,6 +535,12 @@ export class GetTripStatsUseCase {
         conversionRate,
       },
       bookingHistory,
+      reviews: formattedReviews,
+      reviewStats: {
+        totalReviews,
+        averageRating: Math.round(averageRating * 10) / 10,
+        ratingDistribution,
+      },
     };
   }
 }

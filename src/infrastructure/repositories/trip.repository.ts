@@ -3,6 +3,7 @@ import { ITripRepository, PublicTripFilters, PublicTripsResult } from '../../dom
 import {
   Trip,
   TripStatus,
+  TripType,
   TripCategory,
   RoutePoint,
   TripGalleryImage,
@@ -17,14 +18,17 @@ export class TripRepository implements ITripRepository {
   async create(trip: Partial<Trip>): Promise<Trip> {
     const created = await this.prisma.trip.create({
       data: {
-        idAgency: trip.idAgency!,
+        idAgency: trip.idAgency || null,
+        idHost: trip.idHost || null,
         idCity: trip.idCity!,
+        type: (trip.type || 'TRIP') as any, // Por defecto TRIP si no se especifica
         title: trip.title!,
         description: trip.description,
         category: trip.category! as any,
         destinationRegion: trip.destinationRegion,
         latitude: trip.latitude ? trip.latitude : null,
         longitude: trip.longitude ? trip.longitude : null,
+        location: trip.location || null,
         startDate: trip.startDate,
         endDate: trip.endDate,
         durationDays: trip.durationDays!,
@@ -100,13 +104,16 @@ export class TripRepository implements ITripRepository {
       select: {
         idTrip: true,
         idAgency: true,
+        idHost: true,
         idCity: true,
+        type: true,
         title: true,
         description: true,
         category: true,
         destinationRegion: true,
         latitude: true,
         longitude: true,
+        location: true,
         startDate: true,
         endDate: true,
         durationDays: true,
@@ -172,12 +179,14 @@ export class TripRepository implements ITripRepository {
     const updated = await this.prisma.trip.update({
       where: { idTrip: id },
       data: {
+        ...(data.type !== undefined && { type: data.type as any }),
         title: data.title,
         description: data.description,
         category: data.category as any,
         destinationRegion: data.destinationRegion,
         latitude: data.latitude !== undefined ? (data.latitude ? data.latitude : null) : undefined,
         longitude: data.longitude !== undefined ? (data.longitude ? data.longitude : null) : undefined,
+        location: data.location !== undefined ? (data.location || null) : undefined,
         startDate: data.startDate,
         endDate: data.endDate,
         durationDays: data.durationDays,
@@ -296,10 +305,30 @@ export class TripRepository implements ITripRepository {
     const whereConditions: any = {
       status: TripStatus.PUBLISHED,
       isActive: true,
-      agency: {
-        approvalStatus: 'APPROVED',
-      },
+      // Filtrar por tipo si se especifica en los filtros
+      ...(filters.type && { type: filters.type as any }),
     };
+
+    // Para trips (type=TRIP), solo mostrar de agencias aprobadas
+    // Para experiences (type=EXPERIENCE), mostrar de agencias aprobadas O hosts
+    if (filters.type === 'EXPERIENCE') {
+      whereConditions.OR = [
+        {
+          idAgency: { not: null },
+          agency: {
+            approvalStatus: 'APPROVED' as any,
+          },
+        },
+        {
+          idHost: { not: null },
+        },
+      ];
+    } else {
+      // Por defecto (TRIP o sin filtro), solo agencias aprobadas
+      whereConditions.agency = {
+        approvalStatus: 'APPROVED' as any,
+      };
+    }
 
     // Filtrar por ciudad de origen/destino usando RoutePoints (nombre de la ciudad)
     const originFilter: any = null;
@@ -595,9 +624,20 @@ export class TripRepository implements ITripRepository {
         idTrip: id,
         status: TripStatus.PUBLISHED,
         isActive: true,
-        agency: {
-          approvalStatus: 'APPROVED',
-        },
+        // Incluir tanto viajes de agencias aprobadas como experiencias de hosts
+        OR: [
+          // Viajes/Experiencias de agencias aprobadas
+          {
+            idAgency: { not: null },
+            agency: {
+              approvalStatus: 'APPROVED' as any,
+            },
+          },
+          // Experiencias de hosts
+          {
+            idHost: { not: null },
+          },
+        ],
       },
       include: {
         routePoints: {
@@ -631,6 +671,13 @@ export class TripRepository implements ITripRepository {
             picture: true,
           },
         },
+        host: {
+          select: {
+            id: true,
+            name: true,
+            image: true,
+          },
+        },
         city: {
           select: {
             idCity: true,
@@ -656,6 +703,7 @@ export class TripRepository implements ITripRepository {
     return {
       ...tripEntity,
       agency: trip.agency,
+      host: trip.host,
       city: trip.city,
       expeditions: trip.expeditions.map((exp) => ({
         ...exp,
@@ -669,14 +717,17 @@ export class TripRepository implements ITripRepository {
   private mapToEntity(prismaTrip: any): Trip {
     return new Trip({
       idTrip: prismaTrip.idTrip,
-      idAgency: prismaTrip.idAgency,
+      idAgency: prismaTrip.idAgency ? BigInt(prismaTrip.idAgency) : undefined,
+      idHost: prismaTrip.idHost || undefined,
       idCity: prismaTrip.idCity,
+      type: (prismaTrip.type || 'TRIP') as TripType, // Por defecto TRIP
       title: prismaTrip.title,
       description: prismaTrip.description,
       category: prismaTrip.category as TripCategory,
       destinationRegion: prismaTrip.destinationRegion,
       latitude: prismaTrip.latitude ? Number(prismaTrip.latitude) : undefined,
       longitude: prismaTrip.longitude ? Number(prismaTrip.longitude) : undefined,
+      location: prismaTrip.location || undefined,
       startDate: prismaTrip.startDate ? new Date(prismaTrip.startDate) : undefined,
       endDate: prismaTrip.endDate ? new Date(prismaTrip.endDate) : undefined,
       durationDays: prismaTrip.durationDays,

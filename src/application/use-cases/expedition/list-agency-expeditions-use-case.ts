@@ -14,7 +14,8 @@ export interface ListExpeditionsFilters {
 }
 
 export interface ExpeditionWithDetails {
-  id: string;
+  id: string; // tripId - siempre el ID del trip, no de la expedición
+  expeditionId?: string; // ID de la expedición (opcional, solo si hay expediciones)
   title: string;
   location: string;
   image: string | null;
@@ -67,10 +68,12 @@ export class ListAgencyExpeditionsUseCase {
     const skip = (page - 1) * limit;
 
     // Construir filtros de estado
+    // Solo listar viajes (TRIP), no experiencias (EXPERIENCE)
     const now = new Date();
     const whereClause: any = {
       trip: {
         idAgency: agencyId,
+        type: 'TRIP', // Solo viajes, no experiencias
       },
     };
 
@@ -140,8 +143,10 @@ export class ListAgencyExpeditionsUseCase {
     }
 
     // Construir filtros para trips (para incluir trips sin expediciones)
+    // Solo listar viajes (TRIP), no experiencias (EXPERIENCE)
     const tripWhereClause: any = {
       idAgency: agencyId,
+      type: 'TRIP', // Solo viajes, no experiencias
     };
 
     // Aplicar filtro de búsqueda por nombre/título
@@ -389,7 +394,8 @@ export class ListAgencyExpeditionsUseCase {
           : null);
 
       return {
-        id: expedition.idExpedition.toString(),
+        id: expedition.trip.idTrip.toString(), // Siempre el tripId, no el expeditionId
+        expeditionId: expedition.idExpedition.toString(), // ID de la expedición para referencia
         title: expedition.trip.title,
         location: expedition.trip.city.nameCity,
         image,
@@ -481,6 +487,7 @@ export class ListAgencyExpeditionsUseCase {
       const baseWhere = {
         trip: {
           idAgency: agencyId,
+          type: 'TRIP', // Solo viajes, no experiencias
         },
         status: {
           not: ExpeditionStatus.CANCELLED,
@@ -494,6 +501,7 @@ export class ListAgencyExpeditionsUseCase {
             ...baseWhere,
             trip: {
               idAgency: agencyId,
+              type: 'TRIP', // Solo viajes, no experiencias
               status: {
                 notIn: [TripStatus.DRAFT, TripStatus.ARCHIVED],
               },
@@ -515,6 +523,7 @@ export class ListAgencyExpeditionsUseCase {
             ...baseWhere,
             trip: {
               idAgency: agencyId,
+              type: 'TRIP', // Solo viajes, no experiencias
               status: TripStatus.DRAFT,
             },
           },
@@ -524,6 +533,7 @@ export class ListAgencyExpeditionsUseCase {
           where: {
             trip: {
               idAgency: agencyId,
+              type: 'TRIP', // Solo viajes, no experiencias
             },
             OR: [
               { status: ExpeditionStatus.COMPLETED },
@@ -536,6 +546,7 @@ export class ListAgencyExpeditionsUseCase {
           where: {
             trip: {
               idAgency: agencyId,
+              type: 'TRIP', // Solo viajes, no experiencias
               status: TripStatus.ARCHIVED,
             },
           },

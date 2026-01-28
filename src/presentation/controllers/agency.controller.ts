@@ -14,6 +14,7 @@ import {
   UploadedFiles,
   UploadedFile,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ParseJsonFieldInterceptor } from '../interceptors/parse-json-field.interceptor';
@@ -197,10 +198,30 @@ export class AgencyController {
     // Este metodo ya garantiza que la agencia pertenece al usuario
     const agencyId = await this.getUserAgencyId(session.user.id);
 
+    // Debug: verificar archivos recibidos
+    console.log('📸 Archivos recibidos:', files?.length || 0);
+    if (files && files.length > 0) {
+      console.log('📸 Primer archivo:', {
+        fieldname: files[0]?.fieldname,
+        originalname: files[0]?.originalname,
+        mimetype: files[0]?.mimetype,
+        size: files[0]?.size,
+        buffer: files[0]?.buffer ? `Buffer(${files[0].buffer.length} bytes)` : 'No buffer',
+      });
+    }
+
     // Subir imágenes a S3 si hay archivos
     let uploadedImageUrls: string[] = [];
     if (files && files.length > 0) {
-      uploadedImageUrls = await this.s3Service.uploadMultipleImages(files, 'trips');
+      try {
+        uploadedImageUrls = await this.s3Service.uploadMultipleImages(files, 'trips');
+        console.log('✅ Imágenes subidas exitosamente:', uploadedImageUrls.length);
+      } catch (error) {
+        console.error('❌ Error subiendo imágenes:', error);
+        throw error;
+      }
+    } else {
+      console.log('⚠️ No se recibieron archivos para subir');
     }
 
     // Si hay imágenes subidas, reemplazar las URLs en galleryImages
@@ -222,15 +243,22 @@ export class AgencyController {
       }));
     }
 
+    // Si hay imágenes pero no se especificó coverImageIndex, usar la primera imagen (índice 0) como cover
+    if (dto.galleryImages && dto.galleryImages.length > 0 && dto.coverImageIndex === undefined) {
+      dto.coverImageIndex = 0;
+      console.log('📷 Usando primera imagen como cover (índice 0)');
+    }
+
+    // Los viajes siempre son tipo TRIP (no EXPERIENCE)
     // Agregar el idAgency al DTO (obtenido de la sesión)
-    // Usar string para evitar pérdida de precisión con BigInt grandes
-    const tripData = {
+    const finalTripData = {
       ...dto,
+      type: 'TRIP' as any, // Siempre TRIP para este endpoint de agencias
       idAgency: agencyId.toString(),
     };
 
     const trip = await this.createTripUseCase.execute(
-      tripData,
+      finalTripData,
       session.user.id,
     );
 
@@ -244,6 +272,7 @@ export class AgencyController {
    * Lista todas las expediciones de la agencia del usuario con información completa
    * Incluye ocupación, ingresos, filtros por estado y paginación
    * La agencia se obtiene automáticamente de la sesión del usuario
+   * Solo lista viajes (TRIP), no experiencias (EXPERIENCE)
    */
   @Get('trips')
   async listTrips(
@@ -267,6 +296,177 @@ export class AgencyController {
   }
 
   /**
+   * Obtiene estadísticas detalladas de un viaje
+   * Incluye: promoter, estadísticas mensuales, códigos de descuento, ganancias e historial de reservas
+   * 
+   * IMPORTANTE: Esta ruta debe ir ANTES de 'trips/:tripId' para que NestJS la capture correctamente
+   * 
+   * Ejemplo:
+   * GET /agencies/trips/123456789/stats
+   */
+  @Get('trips/:tripId/stats')
+  async getTripStats(
+    @Param('tripId') tripId: string,
+    @Session() session: UserSession,
+    @Query('expeditionId') expeditionId?: string,
+  ) {
+    // Obtener la agencia del usuario desde la sesión
+    const agencyId = await this.getUserAgencyId(session.user.id);
+    
+    // Si se proporciona un expeditionId, verificar que existe y pertenece al trip
+    let expeditionIdBigInt: bigint | undefined;
+    if (expeditionId) {
+      const expedition = await this.prisma.expedition.findFirst({
+        where: {
+          idExpedition: BigInt(expeditionId),
+          idTrip: BigInt(tripId),
+        },
+        select: {
+          idExpedition: true,
+        },
+      });
+
+      if (!expedition) {
+        throw new NotFoundException('Expedición no encontrada o no pertenece a este viaje');
+      }
+
+      expeditionIdBigInt = expedition.idExpedition;
+    }
+    
+    // El caso de uso ya verifica que el trip existe y pertenece a la agencia
+    const stats = await this.getTripStatsUseCase.execute({
+      tripId: BigInt(tripId),
+      agencyId,
+      userId: session.user.id,
+      expeditionId: expeditionIdBigInt,
+    });
+
+    return stats;
+  }
+
+  /**
+   * Obtiene estadísticas detalladas de un viaje a partir de una expedición
+   * Primero obtiene la expedición, luego el trip asociado y muestra las estadísticas
+   * 
+   * IMPORTANTE: Esta ruta debe ir ANTES de otras rutas de expeditions para que NestJS la capture correctamente
+   * 
+   * Ejemplo:
+   * GET /agencies/expeditions/123456789/stats
+   */
+  @Get('expeditions/:expeditionId/stats')
+  async getExpeditionStats(
+    @Param('expeditionId') expeditionId: string,
+    @Session() session: UserSession,
+  ) {
+    // Obtener la agencia del usuario desde la sesión
+    const agencyId = await this.getUserAgencyId(session.user.id);
+
+    // Obtener la expedición con el trip asociado
+    const expedition = await this.prisma.expedition.findUnique({
+      where: { idExpedition: BigInt(expeditionId) },
+      include: {
+        trip: {
+          select: {
+            idTrip: true,
+            idAgency: true,
+            title: true,
+            status: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    if (!expedition) {
+      throw new NotFoundException('Expedición no encontrada');
+    }
+
+    // El caso de uso ya verifica que el trip existe, pertenece a la agencia y que el usuario tiene permisos
+    // Solo necesitamos pasar el tripId y expeditionId
+    const stats = await this.getTripStatsUseCase.execute({
+      tripId: expedition.trip.idTrip,
+      agencyId,
+      userId: session.user.id,
+      expeditionId: expedition.idExpedition, // Filtrar estadísticas solo para esta expedición
+    });
+
+    return stats;
+  }
+
+  /**
+   * Lista todas las expediciones de un trip
+   * IMPORTANTE: Esta ruta debe ir ANTES de 'trips/:tripId' para que NestJS la capture correctamente
+   */
+  @Get('trips/:tripId/expeditions')
+  async listExpeditions(
+    @Param('tripId') tripId: string,
+    @Session() session: UserSession,
+  ) {
+    const expeditions = await this.listExpeditionsUseCase.execute(
+      BigInt(tripId),
+      session.user.id,
+    );
+
+    return {
+      data: expeditions,
+    };
+  }
+
+  /**
+   * Cambia el estado de un trip (DRAFT, PUBLISHED, ARCHIVED)
+   * IMPORTANTE: Esta ruta debe ir ANTES de 'trips/:tripId' para que NestJS la capture correctamente
+   * La agencia se obtiene automáticamente de la sesión del usuario
+   */
+  @Put('trips/:tripId/status')
+  async changeTripStatus(
+    @Param('tripId') tripId: string,
+    @Body() dto: ChangeTripStatusDto,
+    @Session() session: UserSession,
+  ) {
+    // Obtener la agencia del usuario desde la sesión
+    const agencyId = await this.getUserAgencyId(session.user.id);
+    
+    const trip = await this.changeTripStatusUseCase.execute(
+      agencyId,
+      BigInt(tripId),
+      dto.status,
+      session.user.id,
+    );
+
+    return {
+      message: `Estado del trip cambiado a ${dto.status}`,
+      data: trip,
+    };
+  }
+
+  /**
+   * Activa o desactiva un trip
+   * IMPORTANTE: Esta ruta debe ir ANTES de 'trips/:tripId' para que NestJS la capture correctamente
+   * La agencia se obtiene automáticamente de la sesión del usuario
+   */
+  @Put('trips/:tripId/active')
+  async toggleTripActive(
+    @Param('tripId') tripId: string,
+    @Body() dto: ToggleTripActiveDto,
+    @Session() session: UserSession,
+  ) {
+    // Obtener la agencia del usuario desde la sesión
+    const agencyId = await this.getUserAgencyId(session.user.id);
+    
+    const trip = await this.toggleTripActiveUseCase.execute(
+      agencyId,
+      BigInt(tripId),
+      dto.isActive,
+      session.user.id,
+    );
+
+    return {
+      message: `Trip ${dto.isActive ? 'activado' : 'desactivado'} exitosamente`,
+      data: trip,
+    };
+  }
+
+  /**
    * Obtiene un trip individual por ID
    * La agencia se obtiene automáticamente de la sesión del usuario
    */
@@ -287,30 +487,6 @@ export class AgencyController {
     return {
       data: trip,
     };
-  }
-
-  /**
-   * Obtiene estadísticas detalladas de un viaje
-   * Incluye: promoter, estadísticas mensuales, códigos de descuento, ganancias e historial de reservas
-   * 
-   * Ejemplo:
-   * GET /agencies/trips/123456789/stats
-   */
-  @Get('trips/:tripId/stats')
-  async getTripStats(
-    @Param('tripId') tripId: string,
-    @Session() session: UserSession,
-  ) {
-    // Obtener la agencia del usuario desde la sesión
-    const agencyId = await this.getUserAgencyId(session.user.id);
-    
-    const stats = await this.getTripStatsUseCase.execute({
-      tripId: BigInt(tripId),
-      agencyId,
-      userId: session.user.id,
-    });
-
-    return stats;
   }
 
   /**
@@ -395,58 +571,6 @@ export class AgencyController {
   }
 
   /**
-   * Cambia el estado de un trip (DRAFT, PUBLISHED, ARCHIVED)
-   * La agencia se obtiene automáticamente de la sesión del usuario
-   */
-  @Put('trips/:tripId/status')
-  async changeTripStatus(
-    @Param('tripId') tripId: string,
-    @Body() dto: ChangeTripStatusDto,
-    @Session() session: UserSession,
-  ) {
-    // Obtener la agencia del usuario desde la sesión
-    const agencyId = await this.getUserAgencyId(session.user.id);
-    
-    const trip = await this.changeTripStatusUseCase.execute(
-      agencyId,
-      BigInt(tripId),
-      dto.status,
-      session.user.id,
-    );
-
-    return {
-      message: `Estado del trip cambiado a ${dto.status}`,
-      data: trip,
-    };
-  }
-
-  /**
-   * Activa o desactiva un trip
-   * La agencia se obtiene automáticamente de la sesión del usuario
-   */
-  @Put('trips/:tripId/active')
-  async toggleTripActive(
-    @Param('tripId') tripId: string,
-    @Body() dto: ToggleTripActiveDto,
-    @Session() session: UserSession,
-  ) {
-    // Obtener la agencia del usuario desde la sesión
-    const agencyId = await this.getUserAgencyId(session.user.id);
-    
-    const trip = await this.toggleTripActiveUseCase.execute(
-      agencyId,
-      BigInt(tripId),
-      dto.isActive,
-      session.user.id,
-    );
-
-    return {
-      message: `Trip ${dto.isActive ? 'activado' : 'desactivado'} exitosamente`,
-      data: trip,
-    };
-  }
-
-  /**
    * Crea una nueva expedición (instancia de trip con fechas)
    */
   @Post('trips/:tripId/expeditions')
@@ -477,23 +601,6 @@ export class AgencyController {
     };
   }
 
-  /**
-   * Lista todas las expediciones de un trip
-   */
-  @Get('trips/:tripId/expeditions')
-  async listExpeditions(
-    @Param('tripId') tripId: string,
-    @Session() session: UserSession,
-  ) {
-    const expeditions = await this.listExpeditionsUseCase.execute(
-      BigInt(tripId),
-      session.user.id,
-    );
-
-    return {
-      data: expeditions,
-    };
-  }
 
   /**
    * Actualiza una expedición existente

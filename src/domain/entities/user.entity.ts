@@ -10,6 +10,11 @@ export class User {
   createdAt: Date;
   updatedAt: Date;
   
+  // Campos adicionales para anfitriones
+  city?: string; // Ciudad del usuario/anfitrión
+  department?: string; // Departamento del usuario/anfitrión
+  isHost?: boolean; // Indica si es un anfitrión (persona natural que crea experiencias)
+  
   // Campos adicionales para customers/viajeros (opcionales)
   bio?: string;
   preferences?: string[]; // Array de preferencias (ej: ["Aventura", "Playa"])

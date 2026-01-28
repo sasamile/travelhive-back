@@ -9,6 +9,7 @@ export class UserRepository implements IUserRepository {
 
   async create(user: Partial<User>): Promise<User> {
     // Better Auth maneja la creación de usuarios, pero si necesitamos crear manualmente
+    const isHost = user.isHost ?? false;
     const created = await this.prisma.user.create({
       data: {
         email: user.emailUser!,
@@ -16,6 +17,11 @@ export class UserRepository implements IUserRepository {
         emailVerified: false,
         dniUser: user.dniUser,
         phoneUser: user.phoneUser,
+        city: user.city,
+        department: user.department,
+        isHost,
+        // Si es host, establecer estado PENDING automáticamente
+        ...(isHost && { hostApprovalStatus: 'PENDING' }),
         image: user.picture, // Better Auth usa 'image', lo mapeamos desde 'picture'
       },
     });
@@ -79,6 +85,13 @@ export class UserRepository implements IUserRepository {
     return user ? this.mapToEntity(user) : null;
   }
 
+  async findByDni(dni: string): Promise<User | null> {
+    const user = await this.prisma.user.findFirst({
+      where: { dniUser: dni },
+    });
+    return user ? this.mapToEntity(user) : null;
+  }
+
   async findById(id: string): Promise<User | null> {
     // Better Auth usa String para id
     const user = await this.prisma.user.findUnique({
@@ -101,6 +114,9 @@ export class UserRepository implements IUserRepository {
       ...(data.nameUser && { name: data.nameUser }),
       ...(data.dniUser !== undefined && { dniUser: data.dniUser }),
       ...(data.phoneUser !== undefined && { phoneUser: data.phoneUser }),
+      ...(data.city !== undefined && { city: data.city }),
+      ...(data.department !== undefined && { department: data.department }),
+      ...(data.isHost !== undefined && { isHost: data.isHost }),
       ...(data.picture !== undefined && { image: data.picture }), // Better Auth usa 'image'
     };
 
@@ -168,6 +184,9 @@ export class UserRepository implements IUserRepository {
       emailUser: prismaUser.email,
       nameUser: prismaUser.name,
       phoneUser: prismaUser.phoneUser,
+      city: prismaUser.city || undefined,
+      department: prismaUser.department || undefined,
+      isHost: prismaUser.isHost ?? false,
       userId: prismaUser.id, // En Better Auth, userId = id
       picture: prismaUser.image || undefined, // Better Auth usa 'image', lo mapeamos a 'picture'
       password: '', // La contraseña está en Account, no en User

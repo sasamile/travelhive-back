@@ -19,7 +19,7 @@ export class BookingRepository implements IBookingRepository {
         idBooking: b.idBooking,
         idExpedition: b.idExpedition,
         idTrip: b.idTrip,
-        idAgency: b.idAgency,
+        idAgency: b.idAgency || undefined,
         ownerBuy: b.ownerBuy,
         dateBuy: b.dateBuy,
         referenceBuy: b.referenceBuy ?? undefined,

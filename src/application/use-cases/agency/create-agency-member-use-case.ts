@@ -106,12 +106,13 @@ export class CreateAgencyMemberUseCase {
       await this.userRepository.createAccount(user.idUser, input.email, hashedPassword);
     }
 
-    // Crear el miembro de la agencia
+    // Crear el miembro de la agencia almacenando la contraseña temporal en texto plano
     const member = await this.agencyMemberRepository.create({
       idAgency: input.agencyId,
       idUser: user.idUser,
       role: input.role,
       isActive: true,
+      temporaryPassword: temporaryPassword, // Almacenar en texto plano para poder compartirla
     });
 
     // Obtener el usuario completo con información actualizada

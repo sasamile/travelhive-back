@@ -8,6 +8,7 @@ export interface PublicTripFilters {
   startDate?: Date;
   endDate?: Date;
   persons?: number;
+  type?: 'TRIP' | 'EXPERIENCE'; // Tipo de trip: TRIP o EXPERIENCE
   page?: number;
   limit?: number;
 }

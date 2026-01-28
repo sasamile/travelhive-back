@@ -8,6 +8,8 @@ export interface UpdateUserProfileInput {
   emailUser?: string;
   dniUser?: string;
   phoneUser?: string;
+  city?: string;
+  department?: string;
   picture?: string;
   // Campos adicionales para customers/viajeros (opcionales)
   bio?: string;
@@ -43,6 +45,8 @@ export class UpdateUserProfileUseCase {
       ...(input.emailUser !== undefined && { emailUser: input.emailUser }),
       ...(input.dniUser !== undefined && { dniUser: input.dniUser }),
       ...(input.phoneUser !== undefined && { phoneUser: input.phoneUser }),
+      ...(input.city !== undefined && { city: input.city }),
+      ...(input.department !== undefined && { department: input.department }),
       ...(input.picture !== undefined && { picture: input.picture }),
       // Campos adicionales para customers/viajeros
       ...(input.bio !== undefined && { bio: input.bio }),
@@ -57,6 +61,8 @@ export class UpdateUserProfileUseCase {
       nameUser: updated.nameUser,
       dniUser: updated.dniUser,
       phoneUser: updated.phoneUser,
+      city: updated.city,
+      department: updated.department,
       picture: updated.picture,
       bio: updated.bio,
       preferences: updated.preferences,

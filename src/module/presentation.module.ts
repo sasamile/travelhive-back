@@ -7,6 +7,8 @@ import { TripController } from '../presentation/controllers/trip.controller';
 import { BookingController } from '../presentation/controllers/booking.controller';
 import { TripFavoriteController } from '../presentation/controllers/trip-favorite.controller';
 import { TripReviewController } from '../presentation/controllers/trip-review.controller';
+import { ExperienceController } from '../presentation/controllers/experience.controller';
+import { HostController } from '../presentation/controllers/host.controller';
 import { ApplicationModule } from '../application/application.module';
 import { StorageModule } from '../config/storage/storage.module';
 import { DatabaseModule } from '../infrastructure/database/database.module';
@@ -24,6 +26,8 @@ import { PaymentsModule } from '../config/payments/payments.module';
     BookingController,
     TripFavoriteController,
     TripReviewController,
+    ExperienceController,
+    HostController,
   ],
 })
 export class PresentationModule {}

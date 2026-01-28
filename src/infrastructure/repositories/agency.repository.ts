@@ -128,24 +128,40 @@ export class AgencyMemberRepository implements IAgencyMemberRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(member: Partial<AgencyMember>): Promise<AgencyMember> {
-    // Intentar insertar con is_active primero, si falla intentar sin ella
+    // Intentar insertar con is_active y temporary_password primero, si falla intentar sin ellas
     try {
       const isActiveValue = member.isActive !== undefined ? member.isActive : true;
+      const temporaryPassword = member.temporaryPassword || null;
       const result = await this.prisma.$queryRaw<any[]>`
-        INSERT INTO agency_members (id_agency, user_id, role, is_active)
-        VALUES (${BigInt(member.idAgency!.toString())}::bigint, ${member.idUser as string}, ${member.role!}, ${isActiveValue})
-        RETURNING id, id_agency as "idAgency", user_id as "idUser", role, created_at as "createdAt", updated_at as "updatedAt"
+        INSERT INTO agency_members (id_agency, user_id, role, is_active, temporary_password, created_at, updated_at)
+        VALUES (${BigInt(member.idAgency!.toString())}::bigint, ${member.idUser as string}, ${member.role!}, ${isActiveValue}, ${temporaryPassword}, NOW(), NOW())
+        RETURNING id, id_agency as "idAgency", user_id as "idUser", role, is_active as "isActive", temporary_password as "temporaryPassword", created_at as "createdAt", updated_at as "updatedAt"
       `;
       return this.mapToEntity(result[0]);
     } catch (error: any) {
-      // Si falla porque la columna no existe, intentar sin is_active
-      if (error.message?.includes('is_active') || error.message?.includes('column')) {
-        const result = await this.prisma.$queryRaw<any[]>`
-          INSERT INTO agency_members (id_agency, user_id, role)
-          VALUES (${BigInt(member.idAgency!.toString())}::bigint, ${member.idUser as string}, ${member.role!})
-          RETURNING id, id_agency as "idAgency", user_id as "idUser", role, created_at as "createdAt", updated_at as "updatedAt"
-        `;
-        return this.mapToEntity(result[0]);
+      // Si falla porque alguna columna no existe, intentar sin ellas
+      if (error.message?.includes('is_active') || error.message?.includes('temporary_password') || error.message?.includes('column')) {
+        // Intentar con temporary_password pero sin is_active
+        try {
+          const temporaryPassword = member.temporaryPassword || null;
+          const result = await this.prisma.$queryRaw<any[]>`
+            INSERT INTO agency_members (id_agency, user_id, role, temporary_password, created_at, updated_at)
+            VALUES (${BigInt(member.idAgency!.toString())}::bigint, ${member.idUser as string}, ${member.role!}, ${temporaryPassword}, NOW(), NOW())
+            RETURNING id, id_agency as "idAgency", user_id as "idUser", role, temporary_password as "temporaryPassword", created_at as "createdAt", updated_at as "updatedAt"
+          `;
+          return this.mapToEntity(result[0]);
+        } catch (error2: any) {
+          // Si también falla, intentar sin temporary_password ni is_active
+          if (error2.message?.includes('temporary_password') || error2.message?.includes('column')) {
+            const result = await this.prisma.$queryRaw<any[]>`
+              INSERT INTO agency_members (id_agency, user_id, role, created_at, updated_at)
+              VALUES (${BigInt(member.idAgency!.toString())}::bigint, ${member.idUser as string}, ${member.role!}, NOW(), NOW())
+              RETURNING id, id_agency as "idAgency", user_id as "idUser", role, created_at as "createdAt", updated_at as "updatedAt"
+            `;
+            return this.mapToEntity(result[0]);
+          }
+          throw error2;
+        }
       }
       throw error;
     }
@@ -172,10 +188,29 @@ export class AgencyMemberRepository implements IAgencyMemberRepository {
 
     const hasIsActiveColumn = columnExists[0]?.exists;
 
+    // Verificar si la columna temporary_password existe
+    const tempPasswordExists = await this.prisma.$queryRaw<Array<{ exists: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_schema = 'public' 
+        AND table_name = 'agency_members' 
+        AND column_name = 'temporary_password'
+      ) as exists
+    `;
+    const hasTemporaryPasswordColumn = tempPasswordExists[0]?.exists;
+
     // Construir partes de la consulta dinámicamente
-    const selectFields = hasIsActiveColumn
-      ? Prisma.sql`am.id, am.id_agency as "idAgency", am.user_id as "idUser", am.role, am.is_active as "isActive", am.created_at as "createdAt", am.updated_at as "updatedAt"`
-      : Prisma.sql`am.id, am.id_agency as "idAgency", am.user_id as "idUser", am.role, am.created_at as "createdAt", am.updated_at as "updatedAt"`;
+    let selectFields: Prisma.Sql;
+    if (hasIsActiveColumn && hasTemporaryPasswordColumn) {
+      selectFields = Prisma.sql`am.id, am.id_agency as "idAgency", am.user_id as "idUser", am.role, am.is_active as "isActive", am.temporary_password as "temporaryPassword", am.created_at as "createdAt", am.updated_at as "updatedAt"`;
+    } else if (hasIsActiveColumn) {
+      selectFields = Prisma.sql`am.id, am.id_agency as "idAgency", am.user_id as "idUser", am.role, am.is_active as "isActive", am.created_at as "createdAt", am.updated_at as "updatedAt"`;
+    } else if (hasTemporaryPasswordColumn) {
+      selectFields = Prisma.sql`am.id, am.id_agency as "idAgency", am.user_id as "idUser", am.role, am.temporary_password as "temporaryPassword", am.created_at as "createdAt", am.updated_at as "updatedAt"`;
+    } else {
+      selectFields = Prisma.sql`am.id, am.id_agency as "idAgency", am.user_id as "idUser", am.role, am.created_at as "createdAt", am.updated_at as "updatedAt"`;
+    }
 
     // Construir condiciones WHERE
     const conditions: Prisma.Sql[] = [Prisma.sql`am.id_agency = ${agencyId}::bigint`];
@@ -236,15 +271,39 @@ export class AgencyMemberRepository implements IAgencyMemberRepository {
     agencyId: bigint,
     userId: string,
   ): Promise<AgencyMember | null> {
-    // Usar $queryRaw para evitar problemas con isActive si la columna no existe aún
+    // Verificar si las columnas existen
+    const [isActiveExists, tempPasswordExists] = await Promise.all([
+      this.prisma.$queryRaw<Array<{ exists: boolean }>>`
+        SELECT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_schema = 'public' AND table_name = 'agency_members' AND column_name = 'is_active'
+        ) as exists
+      `,
+      this.prisma.$queryRaw<Array<{ exists: boolean }>>`
+        SELECT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_schema = 'public' AND table_name = 'agency_members' AND column_name = 'temporary_password'
+        ) as exists
+      `,
+    ]);
+    
+    const hasIsActive = isActiveExists[0]?.exists;
+    const hasTempPassword = tempPasswordExists[0]?.exists;
+    
+    // Construir SELECT dinámicamente usando Prisma.sql
+    let selectFields: Prisma.Sql;
+    if (hasIsActive && hasTempPassword) {
+      selectFields = Prisma.sql`id, id_agency as "idAgency", user_id as "idUser", role, is_active as "isActive", temporary_password as "temporaryPassword", created_at as "createdAt", updated_at as "updatedAt"`;
+    } else if (hasIsActive) {
+      selectFields = Prisma.sql`id, id_agency as "idAgency", user_id as "idUser", role, is_active as "isActive", created_at as "createdAt", updated_at as "updatedAt"`;
+    } else if (hasTempPassword) {
+      selectFields = Prisma.sql`id, id_agency as "idAgency", user_id as "idUser", role, temporary_password as "temporaryPassword", created_at as "createdAt", updated_at as "updatedAt"`;
+    } else {
+      selectFields = Prisma.sql`id, id_agency as "idAgency", user_id as "idUser", role, created_at as "createdAt", updated_at as "updatedAt"`;
+    }
+    
     const members = await this.prisma.$queryRaw<any[]>`
-      SELECT 
-        id,
-        id_agency as "idAgency",
-        user_id as "idUser",
-        role,
-        created_at as "createdAt",
-        updated_at as "updatedAt"
+      SELECT ${selectFields}
       FROM agency_members
       WHERE id_agency = ${agencyId}::bigint AND user_id = ${userId}
       LIMIT 1
@@ -253,15 +312,39 @@ export class AgencyMemberRepository implements IAgencyMemberRepository {
   }
 
   async findById(id: bigint): Promise<AgencyMember | null> {
-    // Usar $queryRaw para evitar problemas con isActive si la columna no existe aún
+    // Verificar si las columnas existen
+    const [isActiveExists, tempPasswordExists] = await Promise.all([
+      this.prisma.$queryRaw<Array<{ exists: boolean }>>`
+        SELECT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_schema = 'public' AND table_name = 'agency_members' AND column_name = 'is_active'
+        ) as exists
+      `,
+      this.prisma.$queryRaw<Array<{ exists: boolean }>>`
+        SELECT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_schema = 'public' AND table_name = 'agency_members' AND column_name = 'temporary_password'
+        ) as exists
+      `,
+    ]);
+    
+    const hasIsActive = isActiveExists[0]?.exists;
+    const hasTempPassword = tempPasswordExists[0]?.exists;
+    
+    // Construir SELECT dinámicamente usando Prisma.sql
+    let selectFields: Prisma.Sql;
+    if (hasIsActive && hasTempPassword) {
+      selectFields = Prisma.sql`id, id_agency as "idAgency", user_id as "idUser", role, is_active as "isActive", temporary_password as "temporaryPassword", created_at as "createdAt", updated_at as "updatedAt"`;
+    } else if (hasIsActive) {
+      selectFields = Prisma.sql`id, id_agency as "idAgency", user_id as "idUser", role, is_active as "isActive", created_at as "createdAt", updated_at as "updatedAt"`;
+    } else if (hasTempPassword) {
+      selectFields = Prisma.sql`id, id_agency as "idAgency", user_id as "idUser", role, temporary_password as "temporaryPassword", created_at as "createdAt", updated_at as "updatedAt"`;
+    } else {
+      selectFields = Prisma.sql`id, id_agency as "idAgency", user_id as "idUser", role, created_at as "createdAt", updated_at as "updatedAt"`;
+    }
+    
     const members = await this.prisma.$queryRaw<any[]>`
-      SELECT 
-        id,
-        id_agency as "idAgency",
-        user_id as "idUser",
-        role,
-        created_at as "createdAt",
-        updated_at as "updatedAt"
+      SELECT ${selectFields}
       FROM agency_members
       WHERE id = ${id}::bigint
       LIMIT 1
@@ -377,6 +460,7 @@ export class AgencyMemberRepository implements IAgencyMemberRepository {
       idUser: prismaMember.idUser,
       role: prismaMember.role,
       isActive: prismaMember.isActive ?? true,
+      temporaryPassword: prismaMember.temporaryPassword || undefined,
       createdAt: prismaMember.createdAt,
       updatedAt: prismaMember.updatedAt,
     });

@@ -13,6 +13,7 @@ import {
 import { Type } from 'class-transformer';
 import {
   TripStatus,
+  TripType,
   TripCategory,
   PriceType,
   Currency,
@@ -43,6 +44,14 @@ export class UpdateTripDto {
   @IsString()
   @IsOptional()
   destinationRegion?: string;
+
+  @IsString()
+  @IsOptional()
+  location?: string; // Lugar/ubicación específica
+
+  @IsEnum(TripType)
+  @IsOptional()
+  type?: TripType; // Tipo: TRIP o EXPERIENCE
 
   @IsNumber()
   @IsOptional()

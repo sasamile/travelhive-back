@@ -44,6 +44,13 @@ export class ListMyBookingsUseCase {
       where: whereConditions,
       include: {
         bookingItems: true,
+        qrCode: {
+          select: {
+            qrCode: true,
+            qrImageUrl: true,
+            isClaimed: true,
+          },
+        },
         trip: {
           select: {
             idTrip: true,
@@ -61,6 +68,13 @@ export class ListMyBookingsUseCase {
                 idAgency: true,
                 nameAgency: true,
                 picture: true,
+              },
+            },
+            host: {
+              select: {
+                id: true,
+                name: true,
+                image: true,
               },
             },
           },
@@ -123,7 +137,7 @@ export class ListMyBookingsUseCase {
           idBooking: booking.idBooking.toString(),
           idTrip: booking.idTrip.toString(),
           idExpedition: booking.expedition.idExpedition.toString(),
-          idAgency: booking.idAgency.toString(),
+          idAgency: booking.idAgency?.toString(),
           status: booking.status,
           subtotal: Number(booking.subtotal),
           serviceFee: Number(booking.serviceFee),
@@ -137,6 +151,9 @@ export class ListMyBookingsUseCase {
           paymentSource: booking.paymentSource,
           createdAt: booking.createdAt,
           updatedAt: booking.updatedAt,
+          // Código QR (solo si la reserva está confirmada y tiene QR)
+          qrCode: booking.status === 'CONFIRMED' && booking.qrCode ? booking.qrCode.qrCode : null,
+          qrImageUrl: booking.status === 'CONFIRMED' && booking.qrCode ? booking.qrCode.qrImageUrl : null,
           // Información del viaje
           trip: {
             idTrip: booking.trip.idTrip.toString(),
@@ -149,11 +166,20 @@ export class ListMyBookingsUseCase {
                   nameCity: booking.trip.city.nameCity,
                 }
               : null,
-            agency: {
-              idAgency: booking.trip.agency.idAgency.toString(),
-              nameAgency: booking.trip.agency.nameAgency,
-              picture: booking.trip.agency.picture,
-            },
+            agency: booking.trip.agency
+              ? {
+                  idAgency: booking.trip.agency.idAgency.toString(),
+                  nameAgency: booking.trip.agency.nameAgency,
+                  picture: booking.trip.agency.picture,
+                }
+              : null,
+            host: booking.trip.host
+              ? {
+                  id: booking.trip.host.id,
+                  name: booking.trip.host.name,
+                  image: booking.trip.host.image,
+                }
+              : null,
           },
           // Información de la expedición
           expedition: {

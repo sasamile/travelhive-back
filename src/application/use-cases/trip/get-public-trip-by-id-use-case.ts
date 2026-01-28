@@ -19,7 +19,7 @@ export class GetPublicTripByIdUseCase {
       const trip = await this.tripRepository.findPublicTripById(BigInt(tripId));
       
       if (!trip) {
-        throw new NotFoundException('Viaje no encontrado o no disponible públicamente');
+        throw new NotFoundException('Viaje o experiencia no encontrado o no disponible públicamente. Debe estar publicado y activo.');
       }
 
       return trip;

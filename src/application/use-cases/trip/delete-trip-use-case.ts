@@ -12,22 +12,37 @@ export class DeleteTripUseCase {
     private readonly agencyMemberRepository: IAgencyMemberRepository,
   ) {}
 
-  async execute(agencyId: bigint, tripId: bigint, userId: string): Promise<void> {
-    // Verificar que el trip exista y pertenezca a la agencia
-    const trip = await this.tripRepository.findByAgencyAndId(agencyId, tripId);
-    if (!trip) {
-      throw new NotFoundException('Trip no encontrado');
-    }
+  async execute(agencyId: bigint, tripId: bigint, userId: string, isHost?: boolean): Promise<void> {
+    // Verificar que el trip exista
+    let trip;
+    
+    if (isHost || agencyId === BigInt(0)) {
+      // Si es host, buscar por idTrip directamente
+      trip = await this.tripRepository.findById(tripId);
+      if (!trip) {
+        throw new NotFoundException('Trip no encontrado');
+      }
+      // Verificar que el trip pertenezca al host
+      if (trip.idHost !== userId) {
+        throw new ForbiddenException('No tienes permiso para eliminar esta experiencia');
+      }
+    } else {
+      // Si es agencia, buscar por agencia
+      trip = await this.tripRepository.findByAgencyAndId(agencyId, tripId);
+      if (!trip) {
+        throw new NotFoundException('Trip no encontrado');
+      }
 
-    // Verificar que el usuario pertenezca a la agencia
-    const membership = await this.agencyMemberRepository.findByAgencyAndUser(agencyId, userId);
-    if (!membership) {
-      throw new ForbiddenException('No tienes permiso para eliminar trips de esta agencia');
-    }
+      // Verificar que el usuario pertenezca a la agencia
+      const membership = await this.agencyMemberRepository.findByAgencyAndUser(agencyId, userId);
+      if (!membership) {
+        throw new ForbiddenException('No tienes permiso para eliminar trips de esta agencia');
+      }
 
-    // Solo administradores pueden eliminar trips
-    if (membership.role !== 'admin') {
-      throw new ForbiddenException('Solo administradores pueden eliminar trips');
+      // Solo administradores pueden eliminar trips
+      if (membership.role !== 'admin') {
+        throw new ForbiddenException('Solo administradores pueden eliminar trips');
+      }
     }
 
     // Verificar que no haya compras relacionadas con este trip

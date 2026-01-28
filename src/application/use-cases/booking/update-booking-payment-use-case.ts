@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../../infrastructure/database/prisma/prisma.service';
 import { ExpeditionStatusUpdateService } from '../../services/expedition-status-update.service';
+import { QRCodeService } from '../../services/qr-code.service';
 
 export interface UpdateBookingPaymentInput {
   bookingId: bigint;
@@ -15,6 +16,7 @@ export class UpdateBookingPaymentUseCase {
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => ExpeditionStatusUpdateService))
     private readonly expeditionStatusUpdateService: ExpeditionStatusUpdateService,
+    private readonly qrCodeService: QRCodeService,
   ) {}
 
   async execute(input: UpdateBookingPaymentInput) {
@@ -52,6 +54,7 @@ export class UpdateBookingPaymentUseCase {
           idBooking: booking.idBooking.toString(),
           status: booking.status,
           message: 'Reserva ya estaba confirmada',
+          wasConfirmed: false, // Ya estaba confirmada antes
         };
       }
 
@@ -192,12 +195,27 @@ export class UpdateBookingPaymentUseCase {
         idBooking: updatedBooking.idBooking.toString(),
         status: updatedBooking.status,
         message: newStatus === 'CONFIRMED' ? 'Reserva confirmada exitosamente' : 'Pago rechazado, cupos devueltos',
+        wasConfirmed: newStatus === 'CONFIRMED',
       };
+    }, {
+      timeout: 10000, // Aumentar timeout a 10 segundos para transacciones largas
     });
+
+    // Generar QR code FUERA de la transacción si la reserva fue confirmada
+    // Esto evita que la generación de la imagen bloquee la transacción
+    let qrCodeData: { qrCode: string; qrImageUrl: string } | null = null;
+    if (result.wasConfirmed) {
+      try {
+        qrCodeData = await this.qrCodeService.generateQRForBooking(input.bookingId);
+      } catch (error: any) {
+        // No fallar si hay error al generar QR, solo loguear
+        console.warn(`Error al generar QR para booking ${input.bookingId}: ${error.message}`);
+      }
+    }
 
     // Actualizar el estado de la expedición después de la transacción
     // Esto verifica si está llena o si la fecha pasó
-    if (input.status === 'APPROVED' && result) {
+    if (input.status === 'APPROVED' && result.wasConfirmed && bookingForExpedition) {
       try {
         await this.expeditionStatusUpdateService.updateExpeditionStatus(bookingForExpedition.idExpedition);
       } catch (error: any) {
@@ -206,6 +224,12 @@ export class UpdateBookingPaymentUseCase {
       }
     }
 
-    return result;
+    return {
+      idBooking: result.idBooking,
+      status: result.status,
+      message: result.message,
+      qrCode: qrCodeData?.qrCode || null,
+      qrImageUrl: qrCodeData?.qrImageUrl || null,
+    };
   }
 }

@@ -53,10 +53,11 @@ export class ListAgencyMembersUseCase {
       excludeUserId: input.userId, // Excluir el usuario logueado
     });
 
-    // Obtener información completa de cada usuario
+    // Obtener información completa de cada usuario incluyendo la contraseña temporal
     const membersWithUserInfo = await Promise.all(
       members.map(async (member) => {
         const user = await this.userRepository.findById(member.idUser);
+        
         return {
           id: member.id.toString(),
           user: {
@@ -69,6 +70,7 @@ export class ListAgencyMembersUseCase {
           },
           role: member.role,
           isActive: member.isActive,
+          password: member.temporaryPassword || null, // Contraseña temporal en texto plano para compartir con el equipo
           createdAt: member.createdAt,
           updatedAt: member.updatedAt,
         };

@@ -23,7 +23,7 @@ export class Booking {
   idBooking: bigint;
   idExpedition: bigint;
   idTrip: bigint;
-  idAgency: bigint;
+  idAgency?: bigint; // Opcional: puede ser de agencia o host
   ownerBuy: string;
   dateBuy: Date;
   referenceBuy?: string;

@@ -10,9 +10,10 @@ import {
   Min,
   IsDateString,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import {
   TripStatus,
+  TripType,
   TripCategory,
   PriceType,
   Currency,
@@ -28,14 +29,17 @@ export class RoutePointDto implements RoutePoint {
   @IsNotEmpty()
   name: string;
 
-  @IsNumber()
+  @IsNumber({}, { message: 'latitude must be a number' })
+  @Type(() => Number)
   latitude: number;
 
-  @IsNumber()
+  @IsNumber({}, { message: 'longitude must be a number' })
+  @Type(() => Number)
   longitude: number;
 
   @IsNumber()
   @Min(0)
+  @Type(() => Number)
   order: number;
 }
 
@@ -112,8 +116,20 @@ export class ItineraryDayDto implements ItineraryDay {
 
 export class CreateTripDto {
   @IsString()
-  @IsOptional() // Opcional porque se obtiene de la sesión del usuario
+  @IsOptional() // Opcional: puede ser agencia o host
   idAgency?: string;
+
+  @IsString()
+  @IsOptional() // Opcional: para anfitriones (hosts)
+  idHost?: string;
+
+  @IsString()
+  @IsOptional() // Lugar/ubicación específica
+  location?: string;
+
+  @IsEnum(TripType)
+  @IsOptional()
+  type?: TripType; // Tipo: TRIP o EXPERIENCE (por defecto TRIP)
 
   @IsString()
   @IsNotEmpty()

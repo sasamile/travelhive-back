@@ -125,7 +125,7 @@ export class CreateBookingUseCase {
         data: {
           idExpedition: expedition.idExpedition,
           idTrip: expedition.idTrip,
-          idAgency: expedition.trip.idAgency,
+          idAgency: expedition.trip.idAgency || undefined, // Puede ser null si es host
           ownerBuy: input.userId,
           status: 'PENDING', // Pendiente hasta que Wompi confirme el pago
           subtotal: subtotalNumber,
@@ -230,13 +230,13 @@ export class CreateBookingUseCase {
         currency: booking.currency,
         wompiPaymentLink,
         wompiReference,
-        bookingItems: booking.bookingItems.map((i) => ({
+        bookingItems: (booking as any).bookingItems?.map((i: any) => ({
           id: i.id.toString(),
           itemType: i.itemType,
           quantity: i.quantity,
           unitPrice: i.unitPrice,
           totalPrice: i.totalPrice,
-        })),
+        })) || [],
         expedition: {
           idExpedition: updatedExpedition.idExpedition.toString(),
           startDate: updatedExpedition.startDate.toISOString(),

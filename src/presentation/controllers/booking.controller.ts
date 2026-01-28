@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Param, Body, Session, HttpCode, HttpStatus, NotFoundException, BadRequestException, Query, Logger } from '@nestjs/common';
+import { AllowAnonymous } from '@thallesp/nestjs-better-auth';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
 import { CreateBookingUseCase } from '../../application/use-cases/booking/create-booking-use-case';
 import { CreateBookingFromTripUseCase } from '../../application/use-cases/booking/create-booking-from-trip-use-case';
@@ -10,6 +11,7 @@ import { PrismaService } from '../../infrastructure/database/prisma/prisma.servi
 import { WompiService } from '../../config/payments/wompi.service';
 import { ValidateDiscountForTripUseCase } from '../../application/use-cases/booking/validate-discount-for-trip-use-case';
 import { ValidateDiscountDto } from '../dto/validate-discount.dto';
+import { QRCodeService } from '../../application/services/qr-code.service';
 
 @Controller('bookings')
 export class BookingController {
@@ -23,6 +25,7 @@ export class BookingController {
     private readonly prisma: PrismaService,
     private readonly wompiService: WompiService,
     private readonly validateDiscountForTripUseCase: ValidateDiscountForTripUseCase,
+    private readonly qrCodeService: QRCodeService,
   ) {}
 
   /**
@@ -272,12 +275,18 @@ export class BookingController {
       );
     }
 
-    // Si ya está confirmada, retornar directamente
+    // Si ya está confirmada, retornar directamente con el QR si existe
     if (booking.status === 'CONFIRMED') {
+      const existingQR = await this.prisma.bookingQR.findUnique({
+        where: { idBooking: bookingId },
+      });
+
       return {
         idBooking: booking.idBooking.toString(),
         status: booking.status,
         message: 'Reserva ya está confirmada',
+        qrCode: existingQR?.qrCode || null,
+        qrImageUrl: existingQR?.qrImageUrl || null,
       };
     }
 
@@ -310,9 +319,65 @@ export class BookingController {
         status: result.status,
         message: result.message,
         wompiStatus: transactionStatus,
+        qrCode: result.qrCode || null,
+        qrImageUrl: result.qrImageUrl || null,
       };
     } catch (error: any) {
       throw new BadRequestException(`Error al verificar el pago: ${error.message}`);
     }
+  }
+
+  /**
+   * Escanear un código QR para verificar entrada
+   * Endpoint para guardia de seguridad (público, no requiere autenticación)
+   * Muestra información completa de la reserva, viaje y personas
+   */
+  @Get('qr/:qrCode')
+  @AllowAnonymous()
+  async scanQR(@Param('qrCode') qrCode: string) {
+    const qrInfo = await this.qrCodeService.getQRInfo(qrCode);
+
+    if (!qrInfo) {
+      throw new NotFoundException('Código QR no encontrado');
+    }
+
+    if (!qrInfo.valid) {
+      return {
+        valid: false,
+        error: qrInfo.error,
+        data: null,
+      };
+    }
+
+    return {
+      valid: true,
+      data: qrInfo,
+    };
+  }
+
+  /**
+   * Marcar un código QR como reclamado/usado
+   * Endpoint para guardia de seguridad
+   * Previene fraudes marcando el QR como usado
+   */
+  @Post('qr/:qrCode/claim')
+  @HttpCode(HttpStatus.OK)
+  async claimQR(
+    @Param('qrCode') qrCode: string,
+    @Session() session?: UserSession,
+  ) {
+    const result = await this.qrCodeService.claimQR(
+      qrCode,
+      session?.user?.id, // ID del guardia que marca como reclamado (opcional)
+    );
+
+    if (!result.success) {
+      throw new BadRequestException(result.message);
+    }
+
+    return {
+      success: true,
+      message: result.message,
+    };
   }
 }

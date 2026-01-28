@@ -27,6 +27,11 @@
     "prisma:seed:cities": "ts-node -r tsconfig-paths/register prisma/seed-cities.ts",
     "prisma:apply:promoter-tracking": "ts-node -r tsconfig-paths/register prisma/scripts/apply-promoter-tracking.ts",
     "prisma:apply:favorites-reviews": "ts-node -r tsconfig-paths/register prisma/scripts/apply-favorites-reviews.ts",
+    "prisma:apply:host-fields": "ts-node -r tsconfig-paths/register prisma/scripts/apply-host-fields.ts",
+    "prisma:update-existing-hosts": "ts-node -r tsconfig-paths/register prisma/scripts/update-existing-hosts.ts",
+    "prisma:apply:experiences-support": "ts-node -r tsconfig-paths/register prisma/scripts/apply-experiences-support.ts",
+    "prisma:apply:booking-agency-nullable": "ts-node -r tsconfig-paths/register prisma/scripts/apply-booking-agency-nullable.ts",
+    "prisma:apply:trip-type": "ts-node -r tsconfig-paths/register prisma/scripts/apply-trip-type.ts",
     "better-auth:generate": "npx @better-auth/cli@latest generate",
     "better-auth:secret": "npx @better-auth/cli@latest secret"
   },
@@ -44,6 +49,7 @@
     "@prisma/client": "^7.2.0",
     "@thallesp/nestjs-better-auth": "^2.2.2",
     "@types/multer": "^2.0.0",
+    "@types/qrcode": "^1.5.6",
     "bcryptjs": "^2.4.3",
     "better-auth": "^1.4.15",
     "class-transformer": "^0.5.1",
@@ -52,6 +58,7 @@
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
     "pg": "^8.17.1",
+    "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },

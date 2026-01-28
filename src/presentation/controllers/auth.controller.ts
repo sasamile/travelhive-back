@@ -1,12 +1,14 @@
-import { Controller, Body, Get, Patch, Post, Delete, Param, UseInterceptors, UploadedFile, Req, NotFoundException, ForbiddenException, Query, Res } from '@nestjs/common';
+import { Controller, Body, Get, Patch, Post, Delete, Param, UseInterceptors, UploadedFile, Req, NotFoundException, ForbiddenException, Query, Res, HttpCode, HttpStatus } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { Session, AllowAnonymous } from '@thallesp/nestjs-better-auth';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
 import { PrismaService } from '../../infrastructure/database/prisma/prisma.service';
 import { UpdateUserProfileUseCase } from '../../application/use-cases/user/update-user-profile-use-case';
 import { ChangePasswordUseCase } from '../../application/use-cases/user/change-password-use-case';
+import { RegisterHostUseCase } from '../../application/use-cases/auth/register-host-use-case';
 import { UpdateUserProfileDto } from '../dto/update-user-profile.dto';
 import { ChangePasswordDto } from '../dto/change-password.dto';
+import { RegisterHostDto } from '../dto/register-host.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ParseJsonFieldInterceptor } from '../interceptors/parse-json-field.interceptor';
 import { S3Service } from '../../config/storage/s3.service';
@@ -17,6 +19,7 @@ export class AuthController {
     private readonly prisma: PrismaService,
     private readonly updateUserProfileUseCase: UpdateUserProfileUseCase,
     private readonly changePasswordUseCase: ChangePasswordUseCase,
+    private readonly registerHostUseCase: RegisterHostUseCase,
     private readonly s3Service: S3Service,
   ) {}
 
@@ -32,6 +35,9 @@ export class AuthController {
         image,
         dni_user as "dniUser",
         phone_user as "phoneUser",
+        city,
+        department,
+        is_host as "isHost",
         bio,
         preferences,
         travel_styles as "travelStyles",
@@ -133,6 +139,9 @@ export class AuthController {
       user: {
         ...session.user,
         phoneUser: user?.phoneUser || undefined,
+        city: user?.city || undefined,
+        department: user?.department || undefined,
+        isHost: user?.isHost ?? false,
         bio: user?.bio || undefined,
         preferences: preferences || undefined,
         travelStyles: travelStyles || undefined,
@@ -144,7 +153,27 @@ export class AuthController {
 
   @Get('session')
   async getSession(@Session() session: UserSession) {
-    return { session };
+    // Obtener información adicional del usuario (isHost, city, department)
+    const userResult = await this.prisma.$queryRaw<any[]>`
+      SELECT 
+        is_host as "isHost",
+        city,
+        department
+      FROM "user"
+      WHERE id = ${session.user.id}
+      LIMIT 1
+    `;
+    
+    const user = userResult && userResult.length > 0 ? userResult[0] : null;
+
+    return { 
+      session,
+      user: {
+        isHost: user?.isHost ?? false,
+        city: user?.city || undefined,
+        department: user?.department || undefined,
+      },
+    };
   }
 
   /**
@@ -159,6 +188,40 @@ export class AuthController {
       message: 'Ruta pública - Better Auth está funcionando correctamente',
       timestamp: new Date().toISOString(),
       status: 'ok',
+    };
+  }
+
+  /**
+   * Registra un nuevo anfitrión (persona natural)
+   * Crea un usuario que puede crear experiencias/eventos pero NO es una agencia
+   * Este endpoint es público - no requiere autenticación
+   * 
+   * Campos requeridos:
+   * - nameUser: Nombre completo
+   * - dniUser: Documento de identidad
+   * - emailUser: Email
+   * - password: Contraseña (mínimo 6 caracteres)
+   * - phoneUser: Teléfono
+   * - city: Ciudad
+   * - department: Departamento
+   */
+  @Post('register-host')
+  @AllowAnonymous()
+  @HttpCode(HttpStatus.CREATED)
+  async registerHost(@Body() dto: RegisterHostDto) {
+    const result = await this.registerHostUseCase.execute({
+      nameUser: dto.nameUser,
+      dniUser: dto.dniUser,
+      emailUser: dto.emailUser,
+      password: dto.password,
+      phoneUser: dto.phoneUser,
+      city: dto.city,
+      department: dto.department,
+    });
+
+    return {
+      message: 'Anfitrión registrado exitosamente. Ya puedes iniciar sesión.',
+      data: result,
     };
   }
 
@@ -205,6 +268,8 @@ export class AuthController {
       emailUser: dto.emailUser,
       dniUser: dto.dniUser,
       phoneUser: dto.phoneUser,
+      city: dto.city,
+      department: dto.department,
       picture: pictureUrl,
       bio: dto.bio,
       preferences: dto.preferences,
