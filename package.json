@@ -7,7 +7,8 @@
   "license": "UNLICENSED",
   "scripts": {
     "install:ci": "npm ci --legacy-peer-deps",
-    "build": "nest build",
+    "postinstall": "prisma generate",
+    "build": "prisma generate && nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "prestart:dev": "node -e \"const fs=require('fs'); ['dist','tsconfig.tsbuildinfo','tsconfig.build.tsbuildinfo'].forEach(p=>fs.rmSync(p,{recursive:true,force:true}));\"",
