@@ -24,13 +24,28 @@ async function bootstrap() {
   // Interceptor global para serializar BigInt a string
   app.useGlobalInterceptors(new BigIntSerializationInterceptor());
 
-  // Habilitar CORS - permite peticiones desde cualquier origen (ajustar en producción)
+  // Habilitar CORS - configuración mejorada para producción
+  const frontendUrl = process.env.FRONTEND_URL?.trim().replace(/\/$/, '') || '';
+  const betterAuthUrl = process.env.BETTER_AUTH_URL?.trim().replace(/\/$/, '') || '';
+  const isProduction = process.env.NODE_ENV === 'production';
+  
   const allowedOrigins = [
     'http://localhost:3000',
     'http://localhost:3001',
-    process.env.FRONTEND_URL,
-    process.env.BETTER_AUTH_URL,
+    frontendUrl,
+    betterAuthUrl,
   ].filter(Boolean);
+
+  // Log de configuración CORS al iniciar
+  console.log('CORS Configuration:', {
+    isProduction,
+    allowedOrigins,
+    frontendUrl,
+    betterAuthUrl,
+  });
+
+  // Normalizar URLs para comparación (sin trailing slash)
+  const normalizeOrigin = (url: string) => url.replace(/\/$/, '');
 
   app.enableCors({
     origin: (origin, callback) => {
@@ -38,17 +53,34 @@ async function bootstrap() {
       if (!origin) {
         return callback(null, true);
       }
-      // Permitir todos los orígenes en desarrollo o si está en la lista
-      if (process.env.NODE_ENV !== 'production' || allowedOrigins.includes(origin)) {
+
+      // Normalizar el origen recibido
+      const normalizedOrigin = normalizeOrigin(origin);
+      
+      // En desarrollo, permitir todos los orígenes
+      if (process.env.NODE_ENV !== 'production') {
+        return callback(null, true);
+      }
+
+      // En producción, verificar si el origen está en la lista (con o sin trailing slash)
+      const isAllowed = allowedOrigins.some(
+        allowed => normalizeOrigin(allowed) === normalizedOrigin || allowed === origin
+      );
+
+      if (isAllowed) {
         callback(null, true);
       } else {
+        // Log para debugging (puedes removerlo después)
+        console.warn(`CORS blocked origin: ${origin}. Allowed origins:`, allowedOrigins);
         callback(new Error('Not allowed by CORS'));
       }
     },
     credentials: true, // Permite cookies
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Requested-With'],
     exposedHeaders: ['Set-Cookie'],
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
   });
 
   await app.listen(process.env.PORT ?? 8080);
