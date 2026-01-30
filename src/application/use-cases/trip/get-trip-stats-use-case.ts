@@ -23,6 +23,7 @@ export interface GetTripStatsResponse {
     email: string | null;
     phone: string | null;
     referralCount: number;
+    viewCount: number; // Vistas de este promoter para este trip específico
     isActive: boolean;
   } | null;
   monthlyStats: {
@@ -210,21 +211,32 @@ export class GetTripStatsUseCase {
       email: string | null;
       phone: string | null;
       referralCount: number;
+      viewCount: number;
       isActive: boolean;
     } | null = null;
     if (trip.idPromoter) {
-      const promoterData = await this.prisma.promoter.findUnique({
-        where: { id: trip.idPromoter },
-        select: {
-          id: true,
-          code: true,
-          name: true,
-          email: true,
-          phone: true,
-          referralCount: true,
-          isActive: true,
-        },
-      });
+      const [promoterData, viewCount] = await Promise.all([
+        this.prisma.promoter.findUnique({
+          where: { id: trip.idPromoter },
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            email: true,
+            phone: true,
+            referralCount: true,
+            isActive: true,
+          },
+        }),
+        // Contar vistas de este promoter para este trip específico
+        this.prisma.promoterView.count({
+          where: {
+            promoterId: trip.idPromoter,
+            idTrip: input.tripId,
+          },
+        }),
+      ]);
+      
       if (promoterData) {
         promoter = {
           id: promoterData.id.toString(),
@@ -233,6 +245,7 @@ export class GetTripStatsUseCase {
           email: promoterData.email,
           phone: promoterData.phone,
           referralCount: promoterData.referralCount,
+          viewCount: viewCount, // Vistas específicas de este promoter para este trip
           isActive: promoterData.isActive,
         };
       }
